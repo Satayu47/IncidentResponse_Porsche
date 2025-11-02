@@ -1,0 +1,16 @@
+# venv
+.venv/
+# Python cache
+__pycache__/
+*.pyc
+# Streamlit
+.streamlit/
+# LangChain/FAISS, local caches
+.cache_nvd/
+faiss_index/
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+# Env files (never commit real secrets)
+.env
