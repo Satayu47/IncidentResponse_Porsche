@@ -1,31 +1,30 @@
-# Incident Response ChatOps — Phase 1 (Input & Classification)
-AI-driven Phase-1 for "Incident Response ChatOps Bot with Automated Dynamic Playbooks for Real-Time Threat Mitigation".
+# Incident Response ChatOps - Phase 1
 
-## Features
-- Streamlit chat UI
-- Entity & IOC extraction (spaCy + regex)
-- NVD CVE context (free) + MITRE links
-- OpenAI classification with confidence + rationale
-- Thresholds: 0.6 (clarify) / 0.7 (handoff)
-- One-question clarification loop
-- Degraded mode (heuristic) when OpenAI quota is out
-- Downloadable `phase1_output.json` for Phase-2
+This is the first part of our incident response bot that handles input classification and analysis. When security incidents come in, it figures out what type they are and extracts useful info for automated response.
 
-## Setup (Windows PowerShell)
+## What it does
+- Web chat interface for incident reports
+- Pulls out IPs, URLs, CVEs, and other indicators
+- Gets vulnerability details from the NVD database  
+- Uses OpenAI to classify incident types with confidence scores
+- Asks one follow-up question if needed for clarity
+- Works offline with basic pattern matching if API is down
+- Exports structured data for Phase 2 automation
+
+## Getting it running
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python -m spacy download en_core_web_md
-# set your secrets for this session (do NOT commit them)
-$env:OPENAI_API_KEY="sk-..."
-# optional, free
-$env:NVD_API_KEY="..."
+# add your API key (don't commit this!)
+$env:OPENAI_API_KEY="sk-your-key-here"
+# optional - helps with rate limits
+$env:NVD_API_KEY="your-nvd-key"
 streamlit run app.py
 ```
 
-## Notes
-
-* ChatGPT Plus ≠ API credits. Fund your **OpenAI API**.
-* Do not commit `.env` or any real keys.
-* If quota is out, app still runs in degraded mode.
+## Important stuff
+- You need OpenAI API credits (ChatGPT Plus doesn't count)
+- Never commit your `.env` file with real keys
+- The app still works without API access, just less smart

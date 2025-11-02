@@ -1,18 +1,18 @@
-# Contributing to Incident Response ChatOps Bot
+# Contributing - Phase 2 Development
 
-Welcome Phase-2 developers! 🚀 This guide will help you understand the Phase-1 output and build the automated response system.
+Hey! If you're building Phase 2, this guide explains how Phase 1 works and what data it gives you.
 
-## 🎯 Phase-2 Development Goals
+## What Phase 2 needs to do
 
-Phase-2 should implement **automated dynamic playbooks** that:
-1. **Process Phase-1 JSON output** 
-2. **Select appropriate response playbooks** based on incident classification
-3. **Execute automated countermeasures** for high-confidence incidents
-4. **Escalate to humans** for complex cases requiring judgment
+The goal is to take Phase 1's analysis and actually respond to incidents automatically:
+1. Take the JSON output from Phase 1
+2. Pick the right response playbook based on what type of incident it is
+3. Run automated fixes for incidents we're confident about
+4. Hand off tricky cases to humans
 
-## 📥 Phase-1 Output Format
+## What Phase 1 gives you
 
-Phase-1 provides structured JSON with all necessary context:
+Here's the JSON structure you'll get from Phase 1:
 
 ```json
 {
@@ -37,29 +37,20 @@ Phase-1 provides structured JSON with all necessary context:
 }
 ```
 
-## 🔄 Confidence-Based Workflow
+## How to handle different confidence levels
 
-### High Confidence (≥ 0.7)
-- **Action**: Immediate automated response
-- **Playbook**: Execute standard countermeasures
-- **Notification**: Alert team post-execution
-- **Example**: Block malicious IPs, patch known CVEs
+### High confidence (0.7 and up)
+Just do it automatically - block IPs, apply patches, whatever the playbook says. Tell the team afterwards.
 
-### Medium Confidence (0.6-0.69) 
-- **Action**: Execute with human approval
-- **Playbook**: Prepare response, await confirmation
-- **Notification**: Request operator review
-- **Example**: Quarantine suspicious files, monitor traffic
+### Medium confidence (0.6 to 0.69) 
+Ask someone first, but have everything ready to go. Like "Should I quarantine this file?" with a one-click approve.
 
-### Low Confidence (< 0.6)
-- **Action**: Manual investigation required  
-- **Playbook**: Evidence collection only
-- **Notification**: Escalate to security analyst
-- **Example**: Log events, preserve forensics
+### Low confidence (under 0.6)
+Don't touch anything automatically. Just collect evidence and hand it to a human analyst.
 
-## 🛠️ Suggested Phase-2 Architecture
+## How to structure Phase 2
 
-### 1. Playbook Engine
+### Main orchestrator
 ```python
 class PlaybookOrchestrator:
     def process_phase1_output(self, json_data):
@@ -75,17 +66,17 @@ class PlaybookOrchestrator:
         """Hand off to security analyst"""
 ```
 
-### 2. Response Modules
-- **Network**: Firewall rules, IP blocking, DNS sinkhole
-- **Endpoint**: Process termination, file quarantine, registry cleanup  
-- **Application**: WAF rules, account lockout, session invalidation
-- **Forensics**: Evidence collection, memory dumps, network captures
+### Response modules
+- **Network stuff**: Firewall rules, block IPs, DNS sinkholing
+- **Endpoint actions**: Kill processes, quarantine files, fix registry  
+- **App security**: WAF rules, lock accounts, kill sessions
+- **Evidence**: Grab memory dumps, packet captures, logs
 
-### 3. Integration Points
-- **SIEM**: Splunk, ELK, QRadar integration
-- **SOAR**: Phantom, Demisto, XSOAR connectors  
-- **Ticketing**: Jira, ServiceNow automation
-- **Communication**: Slack, Teams, email notifications
+### Integration points
+- **SIEM tools**: Splunk, ELK, QRadar - whatever you use
+- **SOAR platforms**: Phantom, Demisto, XSOAR connections  
+- **Tickets**: Auto-create Jira/ServiceNow tickets
+- **Notifications**: Slack, Teams, email alerts
 
 ## 📋 Development Roadmap
 
