@@ -1,16 +1,16 @@
-# Phase 2 Implementation Notes
+# Phase 2 Notes
 
-Working on the response automation portion of this project. Phase 1 handles incident analysis and classification - Phase 2 needs to implement the actual response actions.
+Building the automation part. Phase 1 analyzes incidents, Phase 2 responds to them.
 
-## Architecture Overview
+## How it works
+Phase 1 outputs JSON with incident classification and confidence score. Phase 2 takes that and does something about it.
 
-Phase 2 should process the JSON output from Phase 1 and execute appropriate response playbooks based on:
-- Incident classification 
-- Confidence scores from the ML model
-- Extracted indicators of compromise
-- Available vulnerability context
+## Confidence levels
+- 0.7+ = do it automatically
+- 0.6-0.69 = ask first  
+- under 0.6 = human review
 
-## Output Schema
+## JSON format
 
 JSON structure from Phase 1:
 
