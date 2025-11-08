@@ -1,14 +1,14 @@
-# Phase 2 Notes
+# Phase 2 Stuff
 
-Building the automation part. Phase 1 analyzes incidents, Phase 2 responds to them.
+Working on the automation part next. Phase 1 just analyzes stuff, Phase 2 actually responds.
 
 ## How it works
-Phase 1 outputs JSON with incident classification and confidence score. Phase 2 takes that and does something about it.
+Phase 1 gives you JSON with what type of incident it is and how confident the system is about it. Phase 2 takes that and does something about it.
 
-## Confidence levels
-- 0.7+ = do it automatically
-- 0.6-0.69 = ask first  
-- under 0.6 = human review
+## Confidence thresholds
+- 0.7+ = just do it automatically
+- 0.6-0.69 = ask someone first  
+- under 0.6 = needs human review
 
 ## JSON format
 

@@ -1,15 +1,15 @@
 # Incident Response Bot
 
-Classifies security incidents and extracts useful data. Built this for my capstone project.
+Takes incident reports and figures out what type of attack it is. Made this for my senior project.
 
 ## What it does
-- Web interface for reporting incidents
-- Finds IPs, URLs, CVE numbers in text
-- Looks up vulnerability info
-- Classifies incident types
-- Outputs JSON for automation
+- Chat interface for incident reports
+- Finds IPs, URLs, CVE numbers in the text
+- Gets vulnerability details from databases
+- Classifies different attack types
+- Spits out JSON data
 
-## Setup
+## Running it
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -19,4 +19,4 @@ $env:OPENAI_API_KEY="your-key"
 streamlit run app.py
 ```
 
-Need OpenAI API access (not ChatGPT Plus).
+You need an OpenAI API key (the paid one, not ChatGPT Plus).
