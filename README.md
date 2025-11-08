@@ -1,30 +1,30 @@
-# Incident Response ChatOps - Phase 1
+# Incident Response Bot - Phase 1
 
-This is the first part of our incident response bot that handles input classification and analysis. When security incidents come in, it figures out what type they are and extracts useful info for automated response.
+Built the classification part of an incident response system. Takes in security reports and figures out what kind of attack it is, extracts IPs and stuff, then hands off clean data to whatever automation comes next.
 
 ## What it does
-- Web chat interface for incident reports
-- Pulls out IPs, URLs, CVEs, and other indicators
-- Gets vulnerability details from the NVD database  
-- Uses OpenAI to classify incident types with confidence scores
-- Asks one follow-up question if needed for clarity
-- Works offline with basic pattern matching if API is down
-- Exports structured data for Phase 2 automation
+- Chat interface for submitting incidents
+- Finds IPs, URLs, CVEs in the text
+- Looks up vulnerability info from NVD
+- Classifies the incident type with confidence scores
+- Asks follow-up questions when it's not sure
+- Runs offline mode if APIs are unavailable  
+- Outputs JSON for the next phase
 
-## Getting it running
+## How to run it
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python -m spacy download en_core_web_md
-# add your API key (don't commit this!)
-$env:OPENAI_API_KEY="sk-your-key-here"
-# optional - helps with rate limits
+# set your API key for this session
+$env:OPENAI_API_KEY="sk-your-actual-key"
+# this one's optional but helps
 $env:NVD_API_KEY="your-nvd-key"
 streamlit run app.py
 ```
 
-## Important stuff
-- You need OpenAI API credits (ChatGPT Plus doesn't count)
-- Never commit your `.env` file with real keys
-- The app still works without API access, just less smart
+## Setup notes
+- You need actual OpenAI API credits, not ChatGPT Plus (different thing)
+- Don't accidentally push your .env file with the real API keys 
+- If the OpenAI API is down, it falls back to basic keyword matching

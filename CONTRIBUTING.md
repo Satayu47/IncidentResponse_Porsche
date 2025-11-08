@@ -1,18 +1,18 @@
-# Contributing - Phase 2 Development
+# Phase 2 Development
 
-Hey! If you're building Phase 2, this guide explains how Phase 1 works and what data it gives you.
+If you're working on the automation part, here's how Phase 1 works and what it spits out.
 
-## What Phase 2 needs to do
+## What Phase 2 should do
 
-The goal is to take Phase 1's analysis and actually respond to incidents automatically:
-1. Take the JSON output from Phase 1
-2. Pick the right response playbook based on what type of incident it is
-3. Run automated fixes for incidents we're confident about
-4. Hand off tricky cases to humans
+Take the incident analysis from Phase 1 and actually do something about it:
+1. Parse the JSON from Phase 1  
+2. Figure out what actions to take
+3. Execute them automatically if we're confident enough
+4. Escalate weird stuff to humans
 
-## What Phase 1 gives you
+## Data format from Phase 1
 
-Here's the JSON structure you'll get from Phase 1:
+The JSON looks like this:
 
 ```json
 {
