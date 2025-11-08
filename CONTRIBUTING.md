@@ -1,18 +1,18 @@
-# Phase 2 Development
+# Phase 2 Implementation Notes
 
-If you're working on the automation part, here's how Phase 1 works and what it spits out.
+Working on the response automation portion of this project. Phase 1 handles incident analysis and classification - Phase 2 needs to implement the actual response actions.
 
-## What Phase 2 should do
+## Architecture Overview
 
-Take the incident analysis from Phase 1 and actually do something about it:
-1. Parse the JSON from Phase 1  
-2. Figure out what actions to take
-3. Execute them automatically if we're confident enough
-4. Escalate weird stuff to humans
+Phase 2 should process the JSON output from Phase 1 and execute appropriate response playbooks based on:
+- Incident classification 
+- Confidence scores from the ML model
+- Extracted indicators of compromise
+- Available vulnerability context
 
-## Data format from Phase 1
+## Output Schema
 
-The JSON looks like this:
+JSON structure from Phase 1:
 
 ```json
 {
@@ -37,16 +37,24 @@ The JSON looks like this:
 }
 ```
 
-## How to handle different confidence levels
+## Response Logic
 
-### High confidence (0.7 and up)
-Just do it automatically - block IPs, apply patches, whatever the playbook says. Tell the team afterwards.
+Based on confidence thresholds:
 
-### Medium confidence (0.6 to 0.69) 
-Ask someone first, but have everything ready to go. Like "Should I quarantine this file?" with a one-click approve.
+**High Confidence (≥0.7)**: Automated response
+- Execute predefined playbooks immediately
+- Log actions taken
+- Notify security team post-execution
 
-### Low confidence (under 0.6)
-Don't touch anything automatically. Just collect evidence and hand it to a human analyst.
+**Medium Confidence (0.6-0.69)**: Human-in-the-loop
+- Present recommended actions to operator
+- Require approval before execution
+- Implement one-click approval workflow
+
+**Low Confidence (<0.6)**: Manual investigation
+- Generate investigation ticket
+- Preserve evidence
+- Escalate to security analyst
 
 ## How to structure Phase 2
 
