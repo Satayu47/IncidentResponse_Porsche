@@ -86,7 +86,7 @@ class PlaybookOrchestrator:
 - **Tickets**: Auto-create Jira/ServiceNow tickets
 - **Notifications**: Slack, Teams, email alerts
 
-## 📋 Development Roadmap
+## Development Roadmap
 
 ### Phase 2.1: Core Engine (Week 1-2)
 - [ ] JSON input processor
@@ -112,7 +112,7 @@ class PlaybookOrchestrator:
 - [ ] Multi-tenant support
 - [ ] Advanced analytics
 
-## 🧪 Testing Strategy
+## Testing Strategy
 
 ### Unit Tests
 ```python
@@ -154,7 +154,7 @@ streamlit run app.py
 # Download JSON outputs for Phase-2 testing
 ```
 
-## 🔍 Key Integration Points
+## Key Integration Points
 
 ### 1. Input Validation
 ```python
@@ -186,7 +186,7 @@ class ExecutionContext:
         self.timeline = []  # Track all actions
 ```
 
-## 📞 Getting Help
+## Getting Help
 
 ### Phase-1 Team Contact
 - **Questions about JSON format**: Check `app.py` Phase-2 handoff section
@@ -213,7 +213,7 @@ streamlit run app.py
 - **Test various confidence levels** by submitting different incident types
 - **Check CVE context** for vulnerability-specific responses
 
-## 🎯 Success Metrics
+## Success Metrics
 
 Phase-2 should achieve:
 - **< 30 second response time** for high-confidence incidents
@@ -224,6 +224,6 @@ Phase-2 should achieve:
 
 ---
 
-**Ready to build the future of automated incident response!** 🛡️
+**Ready to build the future of automated incident response!**
 
 The Phase-1 foundation is solid - now let's add the automation layer that makes security operations truly responsive and efficient.

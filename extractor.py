@@ -20,6 +20,23 @@ class Entities:
     orgs:    List[str] = field(default_factory=list)
     cves:    List[str] = field(default_factory=list)
     cwes:    List[str] = field(default_factory=list)
+    
+    def __len__(self) -> int:
+        """Return total number of entities found"""
+        return len(self.persons) + len(self.orgs) + len(self.cves) + len(self.cwes)
+    
+    def to_list(self) -> List[str]:
+        """Convert all entities to a flat list"""
+        return self.persons + self.orgs + self.cves + self.cwes
+    
+    def to_dict(self) -> Dict[str, List[str]]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "persons": self.persons,
+            "orgs": self.orgs,
+            "cves": self.cves,
+            "cwes": self.cwes
+        }
 
 def extract_entities(text: str) -> Entities:
     doc = nlp(text)
@@ -45,21 +62,42 @@ class Symptom:
     label: str
     score: float
     evidence: List[str]
+    
+    def __len__(self) -> int:
+        """Return 1 for compatibility - this is a single symptom"""
+        return 1
+    
+    def to_dict(self) -> Dict[str, any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "label": self.label,
+            "score": self.score,
+            "evidence": self.evidence
+        }
 
-def detect_symptoms(text: str) -> Symptom:
+def detect_symptoms(text: str) -> List[Symptom]:
+    """Detect security symptoms in text - returns list for consistency"""
     t = text.lower()
     rules = [
         ("sql_injection", [" or 1=1", "union select", "sql syntax", "sqli"]),
         ("xss", ["<script>", "alert(", "xss"]),
         ("ssrf", ["169.254.169.254", "metadata service", "ssrf"]),
         ("bruteforce", ["too many failed", "multiple failed login", "brute"]),
-        ("rce", ["remote code execution", "deserialization", "rce"])
+        ("rce", ["remote code execution", "deserialization", "rce"]),
+        ("malware", ["trojan", "virus", "malware", "suspicious file"]),
+        ("phishing", ["phishing", "fake", "credential harvesting", "suspicious email"]),
+        ("intrusion", ["unauthorized access", "network intrusion", "scan", "probe"])
     ]
-    best = ("other", 0.45, [])
+    
+    symptoms = []
     for label, keys in rules:
         hits = [k for k in keys if k in t]
         if hits:
             score = min(0.9, 0.55 + 0.1*len(hits))
-            if score > best[1]:
-                best = (label, score, hits)
-    return Symptom(*best)
+            symptoms.append(Symptom(label, score, hits))
+    
+    # If no specific symptoms found, add a generic one
+    if not symptoms:
+        symptoms.append(Symptom("other", 0.45, ["general_incident"]))
+    
+    return symptoms
