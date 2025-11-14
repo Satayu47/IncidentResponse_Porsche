@@ -358,24 +358,46 @@ if "asked_slots" not in st.session_state:
 if "last_input_cache" not in st.session_state:
     st.session_state.last_input_cache = {}
 
-def templated_reply(user_text: str, label: str, score: float, iocs: dict, rationale: str, kb_present: bool, followup: str|None, user_level: str = "novice"):
+# Copilot: Make the chatbot responses more useful and action-oriented.
+#
+# Current problems:
+# - Too much meta text like "Other possibilities", "Beginner-friendly mode".
+# - Not enough concrete "What you should do now".
+#
+# New behavior for templated_reply:
+#
+# 1) For every response with score >= THRESH_LOW:
+#    - ALWAYS include a section:
+#          **What you should do now (simple steps):**
+#          - ...
+#          - ...
+#    - The steps must be SAFE, high-level triage, not destructive.
+#
+# 2) Remove or simplify noisy sections:
+#    - Remove "🤔 Other Possibilities" and "🔍 Need More Info" headings.
+#    - Instead, use one short line for alternatives if needed.
+#
+# 3) Keep this structure in the reply:
+#    - Opening sentence (adapted to user_level).
+#    - **Likely issue:** <label> with confidence.
+#    - **What you should do now (simple steps):** bullet list (2–4 items).
+#    - **Why I think this:** short rationale.
+#    - Optionally: one line about other possibilities if candidates exist.
+#    - Follow-up question (if score < THRESH_GO).
+#
+# 4) Do NOT change logic for:
+#    - label, score, kb_present, followup calculation.
+#    - Only change how the message text is composed.
+
+def templated_reply(user_text: str, label: str, score: float, iocs: dict, rationale: str, kb_present: bool, followup: str|None, user_level: str = "novice", candidates: list = None):
     """
-    Adapt tone and level of detail based on user_level.
+    Generate actionable, user-friendly incident response with concrete next steps.
     
-    user_level can be:
-      - "novice": user is non-technical, confused, no logs/payloads.
-      - "intermediate": some technical terms, but not deep.
-      - "expert": provides payloads, logs, CVEs, knows tools.
-    
-    Behavior:
-    - For "novice":
-        * Use friendly, reassuring language.
-        * Explain things in simple terms.
-        * Longer explanations are OK.
-    - For "intermediate":
-        * Balanced: clear but not too verbose.
-    - For "expert":
-        * Short, direct, technical.
+    Focus on:
+    - Clear likely issue
+    - Concrete action steps (safe triage)
+    - Brief explanation
+    - Follow-up questions if needed
     """
     sig = []
     if iocs.get("ip"):  sig.append(f"ip={', '.join(iocs['ip'][:2])}")
@@ -383,251 +405,154 @@ def templated_reply(user_text: str, label: str, score: float, iocs: dict, ration
     if iocs.get("cve"): sig.append(f"cve={', '.join(iocs['cve'][:2])}")
     signals = " · ".join(sig) if sig else "no indicators yet"
 
-    # Natural response variations
     import random
-    
-    # Different responses based on confidence AND user level
-    if score >= 0.8:
-        # High confidence responses - adapt by user_level
-        if user_level == "expert":
-            openings = [
-                "Clear classification.",
-                "Definitive read.",
-                "High confidence assessment.",
-                "Analysis complete."
-            ]
-            classification_intros = [
-                "Classified as",
-                "Identified:",
-                "Category:",
-                "Type:"
-            ]
-        elif user_level == "intermediate":
-            openings = [
-                "Got a clear read on this.",
-                "Analysis shows high confidence.",
-                "Pretty straightforward case.",
-                "Clear classification here."
-            ]
-            classification_intros = [
-                "This is",
-                "Identified as",
-                "We're looking at",
-                "Classification:"
-            ]
-        else:  # novice
-            openings = [
-                "Alright, I've analyzed your report and I'm quite confident about what's happening here.",
-                "Good news - I have a clear understanding of this incident.",
-                "Okay, I've looked at everything you described and I'm pretty sure I know what this is.",
-                "Got it. After reviewing the details, I can tell you what's going on."
-            ]
-            classification_intros = [
-                "This is definitely",
-                "I'm confident this is",
-                "What you're dealing with is",
-                "This appears to be"
-            ]
-        confidence_phrase = "high confidence"
-        
-    elif score >= 0.6:
-        # Medium confidence responses - adapt by user_level
-        if user_level == "expert":
-            openings = [
-                "Likely scenario identified.",
-                "Working hypothesis:",
-                "Probable classification.",
-                "Best match based on indicators."
-            ]
-            classification_intros = [
-                "Probably",
-                "Likely",
-                "Appears to be",
-                "Most consistent with"
-            ]
-        elif user_level == "intermediate":
-            openings = [
-                "I have a working theory here.",
-                "Based on the evidence, likely scenario is:",
-                "Pretty good read, though want to confirm a few things.",
-                "Got a probable classification."
-            ]
-            classification_intros = [
-                "This is probably",
-                "Most likely",
-                "Looks like",
-                "Appears to be"
-            ]
-        else:  # novice
-            openings = [
-                "Okay, I have a pretty good idea of what this is, but I'd like to confirm a few things first.",
-                "I think I know what's happening here, but let me ask a couple questions to be sure.",
-                "Got a good lead on this, but want to double-check some details.",
-                "I have a working theory - just need to verify a few points."
-            ]
-            classification_intros = [
-                "I believe this is",
-                "This is probably",
-                "My assessment is that this is",
-                "Most likely we're dealing with"
-            ]
-        confidence_phrase = "medium confidence"
-        
-    elif score >= 0.5:
-        # Fair confidence responses - adapt by user_level
-        if user_level == "expert":
-            openings = [
-                "Tentative classification.",
-                "Preliminary assessment.",
-                "Initial read (low confidence).",
-                "Working theory, needs validation."
-            ]
-            classification_intros = [
-                "Possibly",
-                "May be",
-                "Could be",
-                "Tentatively"
-            ]
-        elif user_level == "intermediate":
-            openings = [
-                "Got a tentative read on this.",
-                "Here's my preliminary assessment.",
-                "I have an idea, but low confidence.",
-                "Initial analysis suggests this, though uncertain."
-            ]
-            classification_intros = [
-                "This may be",
-                "Could be looking at",
-                "Possibly",
-                "Tentatively classified as"
-            ]
-        else:  # novice
-            openings = [
-                "I'm not entirely sure about this one yet, but here's my best guess.",
-                "This is a bit tricky to pin down, but I have a theory.",
-                "I need more information to be confident, but here's what I'm thinking.",
-                "Got it. Here's my assessment, though I'm not fully certain."
-            ]
-            classification_intros = [
-                "This appears to be",
-                "Looking like", 
-                "Seems we're dealing with",
-                "My initial assessment shows"
-            ]
-        confidence_phrase = "fairly confident"
-        
-    else:
-        # Low confidence responses - adapt by user_level
-        if user_level == "expert":
-            openings = [
-                "Insufficient data.",
-                "Classification unclear.",
-                "Low confidence read.",
-                "Need more context."
-            ]
-            classification_intros = [
-                "Unclear -",
-                "Uncertain -",
-                "Cannot classify:",
-                "Ambiguous:"
-            ]
-        elif user_level == "intermediate":
-            openings = [
-                "Having trouble classifying this one.",
-                "Not enough to work with here.",
-                "This one's unclear to me.",
-                "Need more details to classify this properly."
-            ]
-            classification_intros = [
-                "Best guess is",
-                "Might be looking at",
-                "Could be",
-                "Initial assessment suggests"
-            ]
-        else:  # novice
-            openings = [
-                "I'm having a hard time understanding what's going on here. Let me ask you some questions to get more clarity.",
-                "This one's a bit unclear to me - I need more information to help you properly.",
-                "Hmm, I'm not quite sure what we're dealing with yet. Can you provide more details?",
-                "I'm struggling to classify this one - let's work together to figure it out."
-            ]
-            classification_intros = [
-                "My best guess is",
-                "I think this might be",
-                "This could be",
-                "Initial assessment suggests"
-            ]
-        confidence_phrase = "not entirely sure yet"
-    
     parts = []
-    parts.append(random.choice(openings))
     
-    if label == "other" and score < 0.6:
-        parts.append(f"**{random.choice(classification_intros)} something unclear** - {confidence_phrase} ({score:.2f})")
+    # 1) Opening adapted to user level and confidence
+    if score >= 0.7:
+        if user_level == "expert":
+            parts.append(random.choice(["Clear classification.", "High confidence read.", "Analysis complete."]))
+        elif user_level == "intermediate":
+            parts.append(random.choice(["Got a clear read on this.", "Pretty straightforward case.", "Clear classification here."]))
+        else:  # novice
+            parts.append(random.choice([
+                "I've looked at what you described.",
+                "Okay, I've analyzed your report.",
+                "Alright, I've reviewed the details."
+            ]))
+    elif score >= 0.6:
+        if user_level == "expert":
+            parts.append(random.choice(["Working hypothesis.", "Probable classification.", "Likely scenario."]))
+        elif user_level == "intermediate":
+            parts.append(random.choice(["I have a working theory here.", "Got a probable classification."]))
+        else:  # novice
+            parts.append(random.choice([
+                "I've looked at what you described.",
+                "Okay, I have a pretty good idea of what's happening.",
+                "I think I know what's going on here."
+            ]))
     else:
-        parts.append(f"**{random.choice(classification_intros)} {label.replace('_', ' ')}** - {confidence_phrase} ({score:.2f})")
+        if user_level == "expert":
+            parts.append(random.choice(["Low confidence.", "Insufficient data.", "Classification unclear."]))
+        elif user_level == "intermediate":
+            parts.append(random.choice(["This one's unclear to me.", "Not enough to work with here."]))
+        else:  # novice
+            parts.append(random.choice([
+                "I'm having a bit of trouble understanding this one.",
+                "This is a bit unclear to me right now.",
+                "I need more information to help you properly."
+            ]))
     
-    if rationale:
-        if "need more details" in rationale.lower() or "more specific" in rationale.lower():
-            parts.append(f"**Issue:** {rationale}")
+    # 2) Likely issue with confidence
+    label_display = label.replace('_', ' ')
+    if label == "other" and score < 0.6:
+        parts.append(f"**Likely issue:** Unclear / needs more details (confidence ~{score:.2f})")
+    else:
+        parts.append(f"**Likely issue:** {label_display} (confidence ~{score:.2f})")
+    
+    # 3) Action steps - concrete, safe triage steps
+    actions = []
+    if score >= THRESH_LOW:
+        if label in ("security_misconfiguration", "misconfig", "misconfiguration", "other"):
+            actions = [
+                "Ask your developer or IT team if there was a recent deployment, migration, or maintenance operation.",
+                "Check if there's a backup or migration script that can recreate the missing table/resource.",
+                "Avoid making manual database or configuration changes until someone reviews the situation.",
+                "Check server logs around the time the issue appeared for any errors or warnings."
+            ]
+        elif label in ("injection", "sql_injection", "xss", "command_injection"):
+            actions = [
+                "Temporarily reduce exposure of the affected page or form if possible (disable or restrict access).",
+                "Capture any suspicious input or payloads you saw - save screenshots or copy the exact text.",
+                "Notify your security or development team immediately to review logs around the time of the incident.",
+                "Do not attempt to 'fix' the input manually - preserve evidence for investigation."
+            ]
+        elif label in ("broken_authentication", "authentication_failures", "bruteforce"):
+            actions = [
+                "Force logout the affected user account and reset their password.",
+                "Check if MFA is enabled for the account - if not, enable it now.",
+                "Review login logs for the affected account and any unusual IP addresses or locations.",
+                "Notify the security team if you see continued failed login attempts or unusual patterns."
+            ]
+        elif label in ("broken_access_control", "authorization_bypass", "idor"):
+            actions = [
+                "Temporarily disable or restrict access to the affected functionality if possible.",
+                "Document exactly what the user was able to access that they shouldn't have.",
+                "Notify your development team to review authorization checks for this resource.",
+                "Check logs to see if other users may have exploited the same issue."
+            ]
+        elif label in ("sensitive_data_exposure", "crypto", "cryptographic_failures"):
+            actions = [
+                "Identify what sensitive data may have been exposed (passwords, credit cards, personal info, etc.).",
+                "If credentials were exposed, force password resets for affected users immediately.",
+                "Notify your security team and consider whether breach notification is required.",
+                "Disable the insecure endpoint or communication channel until it can be properly secured."
+            ]
+        elif label in ("vulnerable_component", "cve"):
+            actions = [
+                "Identify the exact version of the vulnerable software component mentioned.",
+                "Check if a security patch or updated version is available from the vendor.",
+                "If a patch exists, prioritize applying it - especially if this CVE is actively exploited.",
+                "If no patch exists yet, consider workarounds like disabling the feature or restricting access."
+            ]
+        elif label in ("malware", "ransomware"):
+            actions = [
+                "Immediately disconnect the affected system from the network to prevent spread.",
+                "Do not attempt to clean or fix it yourself - preserve it for forensics.",
+                "Notify your IT/security team immediately - this may require incident response procedures.",
+                "If you have backups, verify they are clean before considering restoration."
+            ]
+        elif label in ("phishing", "social_engineering"):
+            actions = [
+                "Do not click any links or download any attachments from the suspicious message.",
+                "Forward the phishing email to your IT/security team for analysis.",
+                "If you already clicked a link or entered credentials, change your password immediately.",
+                "Report this to your security team so they can warn other users and block the sender."
+            ]
         else:
-            parts.append(f"**Analysis:** {rationale}")
+            # Generic safe actions for unknown scenarios
+            actions = [
+                "Document exactly what happened, including any error messages or unusual behavior.",
+                "If possible, take screenshots or save logs showing the issue.",
+                "Avoid making changes that might destroy evidence or make the problem worse.",
+                "Contact your IT or security team for guidance on next steps."
+            ]
         
-    parts.append(f"**Indicators:** {signals}")
+        parts.append("\n**What you should do now (simple steps):**")
+        for action in actions[:4]:  # Show top 4 actions
+            parts.append(f"- {action}")
+    
+    # 4) Why I think this - brief rationale
+    if rationale and score >= THRESH_LOW:
+        # Clean up rationale to be more user-friendly
+        why_text = rationale
+        if len(why_text) > 200:
+            why_text = why_text[:200] + "..."
+        parts.append(f"\n**Why I think this:** {why_text}")
+    
+    # 5) Indicators if present
+    if signals != "no indicators yet":
+        parts.append(f"\n**Indicators found:** {signals}")
     
     if kb_present:
-        parts.append("**Plus:** vulnerability data enrichment applied")
-        
-    if followup:
-        if "can you be more specific" in followup.lower() or "what type of" in followup.lower():
-            parts.append(f"**Need help:** {followup}")
-        else:
-            if user_level == "expert":
-                followup_intros = ["Q:", "Clarify:", "Need:", "Confirm:"]
-            elif user_level == "intermediate":
-                followup_intros = ["Quick question -", "One thing -", "Need to know -", "Just checking -"]
-            else:  # novice
-                followup_intros = [
-                    "I need to ask you something -",
-                    "Can you help me understand -",
-                    "One quick question -",
-                    "I'd like to know -"
-                ]
-            parts.append(f"**{random.choice(followup_intros)}** {followup}")
-    else:
-        if score >= 0.7:
-            if user_level == "expert":
-                endings = ["Ready for escalation.", "Actionable.", "Proceed with response.", "Clear to escalate."]
-            elif user_level == "intermediate":
-                endings = [
-                    "Should be good to escalate this.",
-                    "Ready to pass this along.",
-                    "Think we've got enough to move forward.",
-                    "Confident enough to proceed."
-                ]
-            else:  # novice
-                endings = [
-                    "This looks clear enough that we can take action on it.",
-                    "I'm confident enough in this assessment that you can proceed with the response steps.",
-                    "We have a good understanding here - ready to move forward.",
-                    "This is solid - you're good to escalate this to your security team."
-                ]
-        else:
-            if user_level == "expert":
-                endings = ["Current assessment.", "Working with available data.", "Need more context."]
-            elif user_level == "intermediate":
-                endings = [
-                    "That's what I can determine so far.",
-                    "Best assessment with current info.",
-                    "Working with what we have here."
-                ]
-            else:  # novice
-                endings = [
-                    "This is the best I can figure out with what you've told me so far.",
-                    "That's my assessment based on the information I have right now.",
-                    "This is what I'm seeing, but I might need more details to be more certain."
-                ]
-        parts.append(f"**Status:** {random.choice(endings)}")
+        parts.append("_(Plus: CVE vulnerability data was used to enrich this analysis)_")
+    
+    # 6) Other possibilities - compact single line
+    if candidates and len(candidates) > 1:
+        alt = [c for c in candidates if c.get("label", "").lower().replace(" ", "_") != label][:1]
+        if alt:
+            alt_label = alt[0].get("label", "unknown").replace("_", " ")
+            alt_score = alt[0].get("score", 0.0)
+            parts.append(f"\n_I'm also considering: **{alt_label}** (~{alt_score:.2f}), but I'd need more evidence to be sure._")
+    
+    # 7) Follow-up question if needed
+    if followup and score < THRESH_GO:
+        if user_level == "expert":
+            parts.append(f"\n**Q:** {followup}")
+        elif user_level == "intermediate":
+            parts.append(f"\n**Quick question:** {followup}")
+        else:  # novice
+            parts.append(f"\n**To help me understand better:** {followup}")
             
     return "\n\n".join(parts)
 
@@ -774,6 +699,7 @@ if user_text:
 
             # 5) Chatty response (works both full/degenerate modes)
             user_level = out.get("user_level", "novice") if out else "novice"
+            candidates_list = out.get("candidates", []) if out else []
             msg = templated_reply(
                 user_text=user_text,
                 label=label,
@@ -782,7 +708,8 @@ if user_text:
                 rationale=rationale,
                 kb_present=bool(kb_context),
                 followup=followup if (followup and score < THRESH_GO) else None,
-                user_level=user_level
+                user_level=user_level,
+                candidates=candidates_list
             )
             st.markdown(msg)
             
@@ -791,8 +718,8 @@ if user_text:
                 # Show multiple candidates if available
                 candidates = out.get("candidates", [])
                 if len(candidates) > 1 and score < 0.85:
-                    st.markdown("### 🤔 Other Possibilities")
-                    st.write("The system also considered these scenarios:")
+                    st.markdown("### Alternative Scenarios")
+                    st.write("Also considered:")
                     for cand in candidates[1:3]:  # Show top 2 alternatives
                         cand_label = cand.get("label", "unknown")
                         cand_score = cand.get("score", 0)
@@ -802,24 +729,17 @@ if user_text:
                 # Show immediate actions for high confidence
                 immediate_actions = out.get("immediate_actions", [])
                 if immediate_actions and score >= THRESH_GO:
-                    st.markdown("### ⚡ Immediate Actions")
+                    st.markdown("### Immediate Actions")
                     for idx, action in enumerate(immediate_actions[:4], 1):
                         st.write(f"{idx}. {action}")
                 
                 # Show next questions for medium/low confidence
                 next_questions = out.get("next_questions", [])
                 if next_questions and score < THRESH_GO:
-                    st.markdown("### 🔍 Need More Info")
+                    st.markdown("### Additional Information Needed")
                     st.write("To better assess this incident, please answer:")
                     for idx, question in enumerate(next_questions[:3], 1):
                         st.write(f"{idx}. {question}")
-                
-                # Show user level detection
-                user_level = out.get("user_level", "novice")
-                if user_level == "expert":
-                    st.info("💡 **Expert mode detected** - Providing technical details")
-                elif user_level == "novice":
-                    st.info("💡 **Beginner-friendly mode** - Providing step-by-step guidance")
 
             # 5) Phase-2 handoff JSON
             report_category = REPORT_CATEGORY_MAP.get(label, "Other")
@@ -842,15 +762,44 @@ if user_text:
                     for c in ents.cves[:5]:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
-            # 6) download JSON - only when confidence is high enough and not "other"
+            # 6) Phase 2 - Automated Response (only for high confidence)
             if st.session_state.phase1_output and score >= THRESH_GO and label != "other":
-                import io
-                buf = io.BytesIO(json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8"))
-                st.download_button(
-                    "📥 Download Phase-1 Output (JSON)",
-                    data=buf,
-                    file_name="phase1_output.json",
-                    mime="application/json"
-                )
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    import io
+                    buf = io.BytesIO(json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8"))
+                    st.download_button(
+                        "Download Report (JSON)",
+                        data=buf,
+                        file_name="incident_report.json",
+                        mime="application/json"
+                    )
+                
+                with col2:
+                    if st.button("🚀 Run Phase 2 - Automated Response", type="primary"):
+                        from phase2_engine.core.runner import run_phase2_from_incident
+                        
+                        with st.spinner("Executing automated response playbook..."):
+                            phase2_result = run_phase2_from_incident(
+                                st.session_state.phase1_output,
+                                dry_run=True  # Safe simulation mode
+                            )
+                            
+                            if phase2_result["status"] == "success":
+                                st.success(f"✅ Playbook Executed: {phase2_result['playbook']}")
+                                st.write(f"**Description:** {phase2_result['description']}")
+                                st.write(f"**Steps Completed:** {phase2_result['steps_executed']}")
+                                
+                                with st.expander("View Execution Details"):
+                                    for step in phase2_result["steps"]:
+                                        st.write(f"**{step['step']}. {step['name']}**")
+                                        st.write(f"   Action: `{step['action']}`")
+                                        st.write(f"   Status: {step['status']}")
+                                        st.write(f"   {step['message']}")
+                                        st.write("")
+                            else:
+                                st.warning(f"⚠️ {phase2_result['message']}")
 
     st.session_state.history.append({"role":"assistant","content":msg})

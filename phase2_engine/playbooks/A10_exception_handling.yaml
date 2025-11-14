@@ -1,0 +1,154 @@
+playbook_id: "A10_exception_handling"
+category: "A10:2025 Mishandling of Exceptional Conditions"
+description: "Handle unhandled exceptions, unsafe error handling, and lack of fail-safe behavior."
+version: "1.0.0"
+
+nodes:
+  - id: implement-global-exception-handlers
+    phase: preparation
+    type: config
+    description: "Ensure the application has global exception handlers to catch and log unhandled errors."
+    ui_description: "Set up a central place in the code that catches unexpected errors and records them safely."
+    impact: "Prevents the app from failing silently and improves visibility into errors."
+    why_needed: "Unhandled exceptions can cause crashes and missing logs."
+    risk_if_skip: "Errors may cause unexpected behavior or outages without clear explanation."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP Error Handling"
+    params: {}
+
+  - id: turn-off-verbose-errors-in-production
+    phase: preparation
+    type: config
+    description: "Disable verbose error pages and stack traces for production users."
+    ui_description: "Show simple, user-friendly error messages instead of detailed technical information in production."
+    impact: "Prevents sensitive internal details from being exposed to attackers."
+    why_needed: "Technical error details help attackers understand how to exploit the system."
+    risk_if_skip: "Attackers may learn about internal code paths, file locations, or configuration."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP Logging Cheat Sheet"
+        ref: "Avoid detailed errors to the user"
+    params: {}
+
+  - id: monitor-error-rate-and-patterns
+    phase: detection_analysis
+    type: detection
+    description: "Monitor error rates and patterns for abnormal spikes or repeated failures."
+    ui_description: "Watch for sudden increases in errors, which may indicate attacks or serious bugs."
+    impact: "Provides early warning of instability or attack-related failures."
+    why_needed: "Many attacks and failures show up first as error spikes."
+    risk_if_skip: "You may miss early signs of severe issues affecting users."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "NIST SP 800-137"
+        ref: "Information security continuous monitoring"
+    params: {}
+
+  - id: detect-sensitive-error-leaks
+    phase: detection_analysis
+    type: detection
+    description: "Identify error messages that contain stack traces or sensitive data."
+    ui_description: "Scan error logs and responses to see if any contain passwords, keys, or detailed code traces."
+    impact: "Reveals places where too much information is exposed."
+    why_needed: "Leaking secrets or traces through errors is a common weakness."
+    risk_if_skip: "Sensitive information may be exposed to attackers or even normal users."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["monitor-error-rate-and-patterns"]
+    refs:
+      - source: "OWASP Error Handling"
+    params: {}
+
+  - id: enforce-fail-safe-behavior
+    phase: containment
+    type: containment
+    description: "Configure systems to fail safely (deny by default) when errors occur."
+    ui_description: "Change behavior so that when an error happens, the system errs on the side of blocking risky actions."
+    impact: "Reduces the chance that failures lead to open access or incorrect decisions."
+    why_needed: "Unsafe failures can grant unintended access or corrupt data."
+    risk_if_skip: "Errors might create new ways for attackers to bypass controls."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: ["detect-sensitive-error-leaks"]
+    refs:
+      - source: "OWASP Secure Design"
+        ref: "Fail securely principle"
+    params: {}
+
+  - id: temporarily-disable-error-prone-features
+    phase: containment
+    type: containment
+    description: "Temporarily disable features or flows generating repeated critical errors."
+    ui_description: "Turn off unstable parts of the system until they are fixed."
+    impact: "Stops users from triggering problematic flows and reduces risk."
+    why_needed: "Repeated failures can indicate serious flaws that should not remain online."
+    risk_if_skip: "Users may continue to encounter errors, causing instability or data inconsistency."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["enforce-fail-safe-behavior"]
+    refs:
+      - source: "NIST SP 800-61"
+    params: {}
+
+  - id: fix-root-cause-bugs
+    phase: eradication
+    type: remediation
+    description: "Identify and fix the underlying bugs or missing checks that cause exceptions."
+    ui_description: "Correct the code so that the errors no longer occur under normal or expected loads."
+    impact: "Stabilizes the system and prevents the same exceptions from recurring."
+    why_needed: "Temporary workarounds do not remove the underlying problem."
+    risk_if_skip: "The same conditions will trigger the same errors again later."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["temporarily-disable-error-prone-features"]
+    refs:
+      - source: "OWASP Error Handling"
+    params: {}
+
+  - id: test-error-handling-paths
+    phase: recovery
+    type: validation
+    description: "Test error conditions to ensure safe, non-sensitive, and predictable error responses."
+    ui_description: "Simulate failures and confirm that users see simple messages and that the system behaves safely."
+    impact: "Builds confidence that error handling is secure and user-friendly."
+    why_needed: "Error paths are often under-tested compared to normal flows."
+    risk_if_skip: "Unhandled or unsafe errors may still exist in corner cases."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["fix-root-cause-bugs"]
+    refs:
+      - source: "OWASP Testing Guide"
+        ref: "Error handling testing"
+    params: {}
+
+  - id: update-error-handling-guidelines
+    phase: post_incident
+    type: policy
+    description: "Update coding standards and guidelines for error handling based on lessons from the incident."
+    ui_description: "Improve development guidelines so future code uses safer error and exception patterns."
+    impact: "Reduces error-handling weaknesses in new code."
+    why_needed: "Standards and training must evolve as new issues are discovered."
+    risk_if_skip: "Developers may continue writing error handling that repeats past mistakes."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["test-error-handling-paths"]
+    refs:
+      - source: "NIST SP 800-53 SI-11"
+        ref: "Error handling"
+    params: {}

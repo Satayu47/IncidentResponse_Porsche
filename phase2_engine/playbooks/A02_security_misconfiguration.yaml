@@ -1,0 +1,155 @@
+playbook_id: "A02_security_misconfiguration"
+category: "A02:2025 Security Misconfiguration"
+description: "Handle cases where systems are insecure due to wrong or missing configuration."
+version: "1.0.0"
+
+nodes:
+  - id: apply-secure-baseline
+    phase: preparation
+    type: config
+    description: "Apply a secure configuration baseline (e.g., CIS Benchmarks) for servers and applications."
+    ui_description: "Use recommended security settings for the operating system and web server instead of defaults."
+    impact: "Reduces the number of easy misconfigurations attackers can abuse."
+    why_needed: "Default settings are often not secure and may expose unnecessary services."
+    risk_if_skip: "New systems may be deployed with unsafe settings that attackers can scan for."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "CIS Benchmarks"
+        ref: "Secure configuration baseline"
+    params: {}
+
+  - id: disable-unused-services
+    phase: preparation
+    type: config
+    description: "Disable unnecessary services, modules, and management interfaces."
+    ui_description: "Turn off features and services that you do not use, to reduce the number of doors into the system."
+    impact: "Shrinks the attack surface and simplifies monitoring."
+    why_needed: "Every extra service is another way an attacker may get in."
+    risk_if_skip: "Forgotten or unused components can become silent entry points for attackers."
+    severity: medium
+    sensitivity: medium
+    auto: true
+    requires: []
+    refs:
+      - source: "OWASP Security Misconfiguration"
+        ref: "Disable unused features"
+    params: {}
+
+  - id: run-config-scan
+    phase: detection_analysis
+    type: detection
+    description: "Run automated configuration scanning tools to identify insecure settings."
+    ui_description: "Use tools to automatically check if servers and apps are configured according to security best practices."
+    impact: "Finds misconfigurations consistently across many systems."
+    why_needed: "Manual review of all configuration options is error-prone and slow."
+    risk_if_skip: "Important misconfigurations may remain unknown for a long time."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["apply-secure-baseline"]
+    refs:
+      - source: "CIS Controls 4"
+        ref: "Secure configuration assessment"
+    params: {}
+
+  - id: detect-debug-or-verbose-errors
+    phase: detection_analysis
+    type: detection
+    description: "Detect systems running in debug mode or exposing full error messages to users."
+    ui_description: "Check if the app is showing detailed error pages or debug information instead of simple error messages."
+    impact: "Identifies where sensitive technical details may be leaking to attackers."
+    why_needed: "Detailed errors can help attackers understand how to exploit the system."
+    risk_if_skip: "Attackers may learn internal details like file paths, SQL queries, or stack traces."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["run-config-scan"]
+    refs:
+      - source: "OWASP Error Handling Cheat Sheet"
+        ref: "Avoid detailed error disclosure"
+    params: {}
+
+  - id: disable-debug-mode-production
+    phase: containment
+    type: containment
+    description: "Turn off debug mode and verbose error output in production environments."
+    ui_description: "Switch off development/debug options so real users and attackers cannot see detailed error pages."
+    impact: "Reduces the amount of technical information revealed when errors occur."
+    why_needed: "Limiting information makes it harder for attackers to plan and refine attacks."
+    risk_if_skip: "Attackers may continue to collect useful information about your system."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["detect-debug-or-verbose-errors"]
+    refs:
+      - source: "OWASP Security Misconfiguration"
+    params: {}
+
+  - id: restrict-admin-interfaces
+    phase: containment
+    type: containment
+    description: "Restrict access to administrative interfaces by IP, VPN, or strong authentication."
+    ui_description: "Limit access to admin panels so only trusted locations or users can reach them."
+    impact: "Reduces the chance that attackers discover and abuse admin panels."
+    why_needed: "Admin interfaces usually allow powerful actions and must be tightly controlled."
+    risk_if_skip: "Attackers might brute-force admin accounts or find weak admin credentials."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["run-config-scan"]
+    refs:
+      - source: "NIST SP 800-53 AC-17"
+        ref: "Remote access control"
+    params: {}
+
+  - id: fix-misconfigurations-and-patch
+    phase: eradication
+    type: remediation
+    description: "Apply configuration fixes and relevant security patches to misconfigured systems."
+    ui_description: "Correct wrong settings and install security updates on affected systems."
+    impact: "Closes misconfiguration-based vulnerabilities and related software flaws."
+    why_needed: "Containment only reduces risk temporarily; permanent fixes require correct configuration and patching."
+    risk_if_skip: "The same issues can be re-exploited once attackers return."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["disable-debug-mode-production", "restrict-admin-interfaces"]
+    refs:
+      - source: "NVD vendor advisories"
+        ref: "Patching guidance"
+    params: {}
+
+  - id: rescan-to-verify-baseline
+    phase: recovery
+    type: validation
+    description: "Re-run configuration scans to ensure all significant findings have been resolved."
+    ui_description: "Run the security configuration check again to confirm that fixes are correctly applied."
+    impact: "Provides confidence that misconfigurations are no longer present."
+    why_needed: "Fixes might be incomplete or incorrectly applied without verification."
+    risk_if_skip: "Some insecure settings may remain and cause repeat incidents."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["fix-misconfigurations-and-patch"]
+    refs:
+      - source: "CIS Controls 4"
+    params: {}
+
+  - id: update-iac-and-deployment-templates
+    phase: post_incident
+    type: policy
+    description: "Update infrastructure-as-code and deployment templates to embed secure defaults."
+    ui_description: "Change your automation scripts (e.g., Terraform, Ansible) so future systems start with secure settings."
+    impact: "Reduces the chance of reintroducing the same misconfigurations later."
+    why_needed: "Security should be built into the templates, not fixed manually each time."
+    risk_if_skip: "Future deployments may repeat the same insecure configuration."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["rescan-to-verify-baseline"]
+    refs:
+      - source: "OWASP DevSecOps"
+    params: {}

@@ -1,0 +1,138 @@
+playbook_id: "A03_supply_chain"
+category: "A03:2025 Software Supply Chain Failures"
+description: "Handle incidents involving vulnerable or tampered third-party components and build pipelines."
+version: "1.0.0"
+
+nodes:
+  - id: enable-sca-in-ci
+    phase: preparation
+    type: config
+    description: "Enable software composition analysis (SCA) in CI/CD pipelines."
+    ui_description: "Configure builds to automatically scan libraries and dependencies for known vulnerabilities."
+    impact: "Future builds will include a vulnerability report for third-party components."
+    why_needed: "Most modern applications depend heavily on external libraries, which must be monitored."
+    risk_if_skip: "You may deploy vulnerable dependencies without realizing it."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP Software Component Guide"
+        ref: "Use SCA tools"
+    params: {}
+
+  - id: require-signed-artifacts
+    phase: preparation
+    type: policy
+    description: "Require build artifacts and packages to be signed and verified before use."
+    ui_description: "Ensure that important binaries and packages are cryptographically signed so tampering is easier to detect."
+    impact: "Makes it harder for attackers to insert fake or modified packages into your pipeline."
+    why_needed: "Unsigned components can be replaced silently by an attacker."
+    risk_if_skip: "You may run malicious code thinking it is legitimate."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: []
+    refs:
+      - source: "NIST Secure Software Development Framework (SSDF)"
+        ref: "Integrity of code and artifacts"
+    params: {}
+
+  - id: run-sca-scan-now
+    phase: detection_analysis
+    type: detection
+    description: "Run SCA scanning on affected applications to identify vulnerable components."
+    ui_description: "Scan the application’s libraries now to see which ones are known to be vulnerable."
+    impact: "Creates a list of vulnerable dependencies and where they are used."
+    why_needed: "You need to know which components are affected before you can decide what to fix."
+    risk_if_skip: "Critical vulnerable libraries may remain in production without visibility."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["enable-sca-in-ci"]
+    refs:
+      - source: "OWASP Dependency-Check"
+    params: {}
+
+  - id: detect-artifact-integrity-issues
+    phase: detection_analysis
+    type: detection
+    description: "Compare checksums or signatures of build artifacts against expected values."
+    ui_description: "Check whether generated build files match what you expect, and detect any tampering or corruption."
+    impact: "Flags artifacts that may have been modified in transit or during build."
+    why_needed: "Supply chain attacks often modify build outputs rather than the source code."
+    risk_if_skip: "Tampered binaries may be deployed without anyone noticing."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["require-signed-artifacts"]
+    refs:
+      - source: "NIST integrity verification"
+    params: {}
+
+  - id: quarantine-suspicious-artifacts
+    phase: containment
+    type: containment
+    description: "Quarantine compromised or suspicious build artifacts and prevent their deployment."
+    ui_description: "Move any suspicious build outputs to a safe area so they cannot be deployed accidentally."
+    impact: "Stops potentially malicious or corrupted files from being used in production."
+    why_needed: "Containment prevents further spread of compromised components."
+    risk_if_skip: "Compromised artifacts could be deployed and executed in production environments."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["detect-artifact-integrity-issues"]
+    refs:
+      - source: "MITRE ATT&CK M1047"
+        ref: "Application isolation and sandboxing"
+    params: {}
+
+  - id: update-or-replace-vulnerable-packages
+    phase: eradication
+    type: remediation
+    description: "Upgrade or replace components with secure versions according to advisories."
+    ui_description: "Install fixed versions of affected libraries or switch to safer alternatives."
+    impact: "Removes known vulnerabilities from your dependency stack."
+    why_needed: "Keeping vulnerable dependency versions allows attackers to reuse known exploits."
+    risk_if_skip: "Your application may remain exploitable even after containment."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["run-sca-scan-now", "quarantine-suspicious-artifacts"]
+    refs:
+      - source: "NVD"
+        ref: "Vendor security advisories"
+    params: {}
+
+  - id: rebuild-from-trusted-sources
+    phase: recovery
+    type: remediation
+    description: "Rebuild affected services from verified source code and trusted base images."
+    ui_description: "Perform clean builds using trusted repos and images to ensure no hidden modifications remain."
+    impact: "Provides a known-good version of the application after supply chain cleanup."
+    why_needed: "Previously built binaries may be untrustworthy after a compromise."
+    risk_if_skip: "Hidden backdoors or malware may remain in deployed binaries."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["update-or-replace-vulnerable-packages"]
+    refs:
+      - source: "NIST SSDF"
+        ref: "Secure build process"
+    params: {}
+
+  - id: update-sbom-and-third-party-register
+    phase: post_incident
+    type: analysis
+    description: "Update the software bill of materials (SBOM) and vendor risk register with lessons learned."
+    ui_description: "Document what third-party components you use and what risks were found, so future checks are easier."
+    impact: "Improves long-term visibility of software components and their risk levels."
+    why_needed: "Clear SBOM and risk information helps manage future vulnerabilities more quickly."
+    risk_if_skip: "You may repeatedly face similar supply chain issues without a clear record."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["rebuild-from-trusted-sources"]
+    refs:
+      - source: "CISA / NTIA SBOM guidance"
+    params: {}

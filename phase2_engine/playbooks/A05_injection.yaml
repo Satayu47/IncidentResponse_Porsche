@@ -1,0 +1,154 @@
+playbook_id: "A05_injection"
+category: "A05:2025 Injection"
+description: "Respond to SQL injection, command injection, and XSS attacks."
+version: "1.0.0"
+
+nodes:
+  - id: enable-request-and-query-logging
+    phase: preparation
+    type: config
+    description: "Enable logging for HTTP requests and database queries on affected services."
+    ui_description: "Turn on logs so we can see what inputs users send and what queries the system runs."
+    impact: "Provides a record to detect and analyze injection attempts."
+    why_needed: "Without logs, it is hard to confirm how attackers are exploiting injection points."
+    risk_if_skip: "You may miss ongoing attacks and have no trace to investigate."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "OWASP Logging Cheat Sheet"
+        ref: "Log input and query failures"
+    params: {}
+
+  - id: detect-sqli-signatures
+    phase: detection_analysis
+    type: detection
+    description: "Detect suspicious patterns in input and error logs that indicate SQL injection."
+    ui_description: "Look for strange characters or error messages that indicate attackers are trying to break SQL queries."
+    impact: "Raises alerts when inputs look like SQL injection attempts."
+    why_needed: "Early detection is key to stopping attacks before data is stolen."
+    risk_if_skip: "SQL injection may go unnoticed until large amounts of data are already exposed."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["enable-request-and-query-logging"]
+    refs:
+      - source: "OWASP SQL Injection"
+        ref: "Monitoring and detection"
+    params: {}
+
+  - id: detect-xss-signatures
+    phase: detection_analysis
+    type: detection
+    description: "Detect suspicious HTML/JavaScript payloads in user input or stored content."
+    ui_description: "Scan inputs and stored content for scripts or tags that might run in other users’ browsers."
+    impact: "Helps identify potential XSS attacks targeting end-users."
+    why_needed: "XSS allows attackers to hijack user sessions and steal data."
+    risk_if_skip: "Malicious scripts may run in users’ browsers without being detected."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["enable-request-and-query-logging"]
+    refs:
+      - source: "OWASP XSS Prevention Cheat Sheet"
+    params: {}
+
+  - id: block-malicious-ip
+    phase: containment
+    type: containment
+    description: "Block IP addresses or ranges generating injection attacks."
+    ui_description: "Block the attacker’s IP so they cannot keep sending malicious requests."
+    impact: "Stops attacks from the identified source immediately."
+    why_needed: "Limits ongoing damage and buys time to fix the underlying issue."
+    risk_if_skip: "Attackers may continue to probe and exploit injection points."
+    severity: high
+    sensitivity: medium
+    auto: true
+    requires: ["detect-sqli-signatures", "detect-xss-signatures"]
+    refs:
+      - source: "MITRE ATT&CK M1030"
+        ref: "Network Segmentation / Blocking"
+    params: {}
+
+  - id: disable-vulnerable-input-paths
+    phase: containment
+    type: containment
+    description: "Temporarily disable or restrict forms, endpoints, or features known to be vulnerable."
+    ui_description: "Turn off or lock down the specific part of the application where injection is happening."
+    impact: "Reduces attack surface while a fix is being developed."
+    why_needed: "If vulnerable features stay online, attackers can continue exploiting them."
+    risk_if_skip: "Attackers can keep exploiting the same injection path even after IP blocking."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["block-malicious-ip"]
+    refs:
+      - source: "OWASP Top 10 Injection"
+    params: {}
+
+  - id: implement-parameterized-queries
+    phase: eradication
+    type: remediation
+    description: "Use parameterized queries or ORM-safe APIs instead of string concatenation for database access."
+    ui_description: "Change database code so user input is always treated as data, not as part of the SQL command."
+    impact: "Prevents attackers from injecting SQL commands through input fields."
+    why_needed: "This is the primary long-term fix for SQL injection vulnerabilities."
+    risk_if_skip: "Even after blocking some attackers, the system remains fundamentally vulnerable."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["disable-vulnerable-input-paths"]
+    refs:
+      - source: "OWASP SQL Injection Prevention Cheat Sheet"
+    params: {}
+
+  - id: harden-output-encoding
+    phase: eradication
+    type: remediation
+    description: "Ensure all user-controlled data is correctly encoded before being displayed in the browser."
+    ui_description: "Update templates or output code so user-supplied text cannot break out and run as HTML/JavaScript."
+    impact: "Protects users against stored and reflected XSS attacks."
+    why_needed: "Input validation alone is not enough to stop XSS without proper output encoding."
+    risk_if_skip: "Attackers may inject content that runs in other users’ browsers."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["disable-vulnerable-input-paths"]
+    refs:
+      - source: "OWASP XSS Prevention Cheat Sheet"
+    params: {}
+
+  - id: restart-affected-services
+    phase: recovery
+    type: remediation
+    description: "Restart application or web services after deploying the injection fixes."
+    ui_description: "Restart the application so the new secure code and configuration take effect."
+    impact: "Brief downtime may occur; after that the service runs with the fixed code."
+    why_needed: "Some deployments require a restart for changes to apply properly."
+    risk_if_skip: "The servers may still be running old vulnerable code."
+    severity: medium
+    sensitivity: medium
+    auto: true
+    requires: ["implement-parameterized-queries", "harden-output-encoding"]
+    refs:
+      - source: "NIST SP 800-61"
+        ref: "Eradication and recovery"
+    params: {}
+
+  - id: add-injection-regression-tests
+    phase: post_incident
+    type: analysis
+    description: "Add automated tests and security checks for injection cases to the CI pipeline."
+    ui_description: "Create tests so that future code changes are automatically checked against injection vulnerabilities."
+    impact: "Prevents developers from accidentally reintroducing similar injection flaws."
+    why_needed: "Long-term resilience requires continuous testing and enforcement."
+    risk_if_skip: "Similar vulnerabilities may appear again in new features or code changes."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["restart-affected-services"]
+    refs:
+      - source: "OWASP ASVS"
+        ref: "Injection testing requirements"
+    params: {}

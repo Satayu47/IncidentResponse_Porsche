@@ -1,0 +1,124 @@
+playbook_id: "A01_broken_access_control"
+category: "A01:2025 Broken Access Control"
+description: "Handle incidents where users can access data or functions they are not allowed to."
+version: "1.0.0"
+
+nodes:
+  - id: enable-access-logging
+    phase: preparation
+    type: config
+    description: "Enable detailed logging for access control decisions and failures."
+    ui_description: "Turn on logs so we can see who tried to access what, and whether it was allowed or denied."
+    impact: "Future access violations will be visible in log files or the SIEM."
+    why_needed: "Without logs, we cannot investigate who accessed or tried to access protected resources."
+    risk_if_skip: "Suspicious access may go unnoticed and we cannot prove what happened."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "OWASP Logging Cheat Sheet"
+        ref: "Log access control failures"
+    params: {}
+
+  - id: detect-privilege-abuse
+    phase: detection_analysis
+    type: detection
+    description: "Detect suspicious privilege changes or access to resources outside the normal role."
+    ui_description: "Look for accounts that suddenly gain more access than usual or access data they normally shouldn’t."
+    impact: "Generates alerts when roles or permissions are misused."
+    why_needed: "Privilege abuse is often how attackers move from normal user to admin."
+    risk_if_skip: "An attacker could escalate privileges and maintain long-term access without detection."
+    severity: high
+    sensitivity: medium
+    auto: true
+    requires: ["enable-access-logging"]
+    refs:
+      - source: "MITRE ATT&CK T1098"
+        ref: "Account Manipulation"
+    params: {}
+
+  - id: temporarily-revoke-elevated-access
+    phase: containment
+    type: containment
+    description: "Temporarily revoke suspicious elevated roles or permissions for affected accounts."
+    ui_description: "Remove admin or special rights from accounts that look suspicious until we are sure they are safe."
+    impact: "Reduces what a potentially compromised account can do while the incident is being handled."
+    why_needed: "This stops attackers from using stolen or abused privileges to damage the system."
+    risk_if_skip: "Attackers may continue using high privileges to steal data or change configurations."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["detect-privilege-abuse"]
+    refs:
+      - source: "NIST SP 800-53 AC-2"
+        ref: "Account Management"
+    params: {}
+
+  - id: disable-insecure-endpoints
+    phase: containment
+    type: containment
+    description: "Disable or restrict endpoints that allow access without proper authorization checks."
+    ui_description: "Turn off or lock down risky API endpoints or URLs that allow users to access other people’s data."
+    impact: "Reduces the number of ways an attacker can exploit access control issues."
+    why_needed: "If endpoints remain open, attackers can keep abusing them during the investigation."
+    risk_if_skip: "Data exposure or unauthorized changes can continue even while you investigate."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["detect-privilege-abuse"]
+    refs:
+      - source: "OWASP Top 10 Broken Access Control"
+        ref: "Disable insecure object access"
+    params: {}
+
+  - id: fix-authorization-logic
+    phase: eradication
+    type: remediation
+    description: "Correct broken authorization checks in the application or API gateway."
+    ui_description: "Fix the code or rules that decide who is allowed to see or change specific data or actions."
+    impact: "Prevents users from bypassing checks and accessing unauthorized resources."
+    why_needed: "Quick containment is not enough; the root cause must be removed."
+    risk_if_skip: "The same access control bug can be exploited again after the incident."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["disable-insecure-endpoints"]
+    refs:
+      - source: "OWASP ASVS V4"
+        ref: "Access Control Verification"
+    params: {}
+
+  - id: regression-test-access-control
+    phase: recovery
+    type: validation
+    description: "Test common and edge-case scenarios to confirm access control behaves correctly."
+    ui_description: "Run tests to make sure normal users can still use the app, but cannot see or change protected data."
+    impact: "Confirms that fixes work and do not break normal usage."
+    why_needed: "Prevents shipping a fix that introduces new access issues."
+    risk_if_skip: "Users may experience new issues or old vulnerabilities may still exist."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["fix-authorization-logic"]
+    refs:
+      - source: "OWASP Testing Guide"
+        ref: "Authorization testing"
+    params: {}
+
+  - id: update-access-policies-and-training
+    phase: post_incident
+    type: policy
+    description: "Update access policies, role designs, and developer training based on incident findings."
+    ui_description: "Improve company rules and developer awareness so similar access issues are less likely in the future."
+    impact: "Strengthens long-term access design and processes."
+    why_needed: "Incidents are valuable lessons for preventing future weaknesses."
+    risk_if_skip: "The same design mistakes may be repeated in new systems or features."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["regression-test-access-control"]
+    refs:
+      - source: "CIS Controls v8 6.7"
+        ref: "Review access rights regularly"
+    params: {}

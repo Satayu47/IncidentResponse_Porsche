@@ -1,0 +1,136 @@
+playbook_id: "A08_integrity_failures"
+category: "A08:2025 Software or Data Integrity Failures"
+description: "Handle incidents where software or data may have been tampered with or corrupted."
+version: "1.0.0"
+
+nodes:
+  - id: deploy-file-integrity-monitoring
+    phase: preparation
+    type: config
+    description: "Deploy file integrity monitoring (FIM) on critical systems and configuration files."
+    ui_description: "Set up tools that alert you when important files change unexpectedly."
+    impact: "Provides early warning if attackers modify key files."
+    why_needed: "Unauthorized changes to binaries or configs often indicate compromise."
+    risk_if_skip: "Tampering may go unnoticed for a long time."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "CIS Controls v8 2.3"
+        ref: "File integrity monitoring"
+    params: {}
+
+  - id: maintain-baseline-checksums
+    phase: preparation
+    type: config
+    description: "Maintain baseline hashes for critical binaries, configuration, and scripts."
+    ui_description: "Record known-good fingerprints for important files to compare against later."
+    impact: "Enables detection of unauthorized file changes."
+    why_needed: "Without a baseline, it is hard to prove a file was modified."
+    risk_if_skip: "You may not notice subtle but dangerous tampering."
+    severity: medium
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "NIST integrity guidelines"
+    params: {}
+
+  - id: detect-checksum-mismatches
+    phase: detection_analysis
+    type: detection
+    description: "Detect mismatches between current and baseline checksums."
+    ui_description: "Compare current file fingerprints with the original to find suspicious changes."
+    impact: "Identifies files that may have been altered by an attacker."
+    why_needed: "Many attacks involve modifying software or config for persistence."
+    risk_if_skip: "Malicious changes might remain hidden for long periods."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["maintain-baseline-checksums"]
+    refs:
+      - source: "OWASP Integrity Failures"
+    params: {}
+
+  - id: detect-unauthorized-repo-changes
+    phase: detection_analysis
+    type: detection
+    description: "Detect unauthorized or unreviewed changes in source or configuration repositories."
+    ui_description: "Watch for code or config changes that bypass normal review or come from unusual accounts."
+    impact: "Helps catch attacks where attackers modify source instead of binaries."
+    why_needed: "Supply chain attacks often start with repo tampering."
+    risk_if_skip: "Backdoors may be inserted into code without being noticed."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "NIST SSDF"
+    params: {}
+
+  - id: isolate-affected-hosts-or-builders
+    phase: containment
+    type: containment
+    description: "Isolate compromised hosts or CI/CD build agents from the network."
+    ui_description: "Disconnect affected servers or build machines from the network to stop further spread."
+    impact: "Limits the attacker’s ability to move or exfiltrate data."
+    why_needed: "Compromised systems can be used as a launch pad for more attacks."
+    risk_if_skip: "Attackers may spread to other systems or exfiltrate more data."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["detect-checksum-mismatches", "detect-unauthorized-repo-changes"]
+    refs:
+      - source: "NIST SP 800-61"
+        ref: "Host isolation"
+    params: {}
+
+  - id: quarantine-or-remove-tampered-files
+    phase: eradication
+    type: remediation
+    description: "Quarantine or remove files confirmed or strongly suspected to be tampered with."
+    ui_description: "Move or delete compromised files so they cannot be executed or used."
+    impact: "Reduces the chance of running malicious or altered code."
+    why_needed: "Leaving tampered files present increases risk of re-exploitation."
+    risk_if_skip: "Attackers may regain control using the same backdoored files."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["isolate-affected-hosts-or-builders"]
+    refs:
+      - source: "OWASP Integrity Failures"
+    params: {}
+
+  - id: rebuild-from-clean-sources
+    phase: recovery
+    type: remediation
+    description: "Rebuild affected components from verified clean source code and base images."
+    ui_description: "Reinstall or redeploy software from trusted versions, not from possibly infected machines."
+    impact: "Restores systems to a known-good state."
+    why_needed: "Once compromised, it is hard to fully trust a system without rebuilding."
+    risk_if_skip: "Hidden persistence mechanisms may still exist on the system."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["quarantine-or-remove-tampered-files"]
+    refs:
+      - source: "NIST SP 800-184"
+        ref: "System rebuild guidance"
+    params: {}
+
+  - id: strengthen-integrity-controls
+    phase: post_incident
+    type: policy
+    description: "Improve integrity monitoring, signing, and approval processes based on lessons learned."
+    ui_description: "Tighten controls so that future unauthorized changes are less likely and easier to detect."
+    impact: "Improves long-term protection against tampering."
+    why_needed: "Incidents reveal weaknesses in process and tooling that should be corrected."
+    risk_if_skip: "The same type of integrity failure may occur again."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["rebuild-from-clean-sources"]
+    refs:
+      - source: "OWASP DevSecOps"
+    params: {}

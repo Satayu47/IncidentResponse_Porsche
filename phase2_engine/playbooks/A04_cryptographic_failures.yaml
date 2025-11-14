@@ -1,0 +1,137 @@
+playbook_id: "A04_cryptographic_failures"
+category: "A04:2025 Cryptographic Failures"
+description: "Handle weak, outdated, or misconfigured cryptography and key management problems."
+version: "1.0.0"
+
+nodes:
+  - id: maintain-approved-crypto-standards
+    phase: preparation
+    type: policy
+    description: "Maintain a list of approved algorithms, key sizes, and protocols for the organization."
+    ui_description: "Define clearly which encryption methods are allowed and which are forbidden."
+    impact: "Gives developers and engineers a clear standard to follow."
+    why_needed: "Without clear standards, teams may accidentally choose weak or outdated encryption."
+    risk_if_skip: "Different systems may use insecure crypto that is easy to break."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "NIST SP 800-131A"
+        ref: "Transitioning to stronger cryptographic keys and algorithms"
+    params: {}
+
+  - id: inventory-crypto-usage
+    phase: detection_analysis
+    type: detection
+    description: "Identify where cryptography is used (e.g., TLS endpoints, data at rest, tokens)."
+    ui_description: "Build a list of where encryption is used in your systems (web, APIs, databases, backups)."
+    impact: "Provides a map of where crypto problems could exist."
+    why_needed: "You cannot fix crypto issues if you do not know where encryption is used."
+    risk_if_skip: "Hidden weak configurations may remain in critical paths."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["maintain-approved-crypto-standards"]
+    refs:
+      - source: "OWASP Cryptographic Failures"
+    params: {}
+
+  - id: detect-weak-crypto-configs
+    phase: detection_analysis
+    type: detection
+    description: "Detect weak algorithms (e.g., MD5, SHA-1) and outdated TLS versions."
+    ui_description: "Scan for old or weak encryption like outdated TLS versions or insecure hash functions."
+    impact: "Highlights specific endpoints and components using insecure crypto."
+    why_needed: "Attackers target weak crypto to break confidentiality and integrity."
+    risk_if_skip: "Data may be easier to decrypt or forge than expected."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["inventory-crypto-usage"]
+    refs:
+      - source: "OWASP Crypto Storage Cheat Sheet"
+    params: {}
+
+  - id: disable-weak-crypto
+    phase: containment
+    type: containment
+    description: "Disable weak algorithms and protocols on exposed services."
+    ui_description: "Turn off old and weak encryption settings on servers, such as old TLS versions."
+    impact: "Protects connections from being downgraded or broken using known weaknesses."
+    why_needed: "Even if strong crypto is available, weak options give attackers an easier path."
+    risk_if_skip: "Attackers may downgrade connections to weak crypto and decrypt or tamper with data."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["detect-weak-crypto-configs"]
+    refs:
+      - source: "NIST SP 800-52r2"
+        ref: "Guidelines for the Selection, Configuration, and Use of TLS"
+    params: {}
+
+  - id: rotate-keys-and-certificates
+    phase: eradication
+    type: remediation
+    description: "Rotate keys, certificates, and secrets associated with weak or compromised crypto."
+    ui_description: "Generate and deploy new keys or certificates to replace old or risky ones."
+    impact: "Reduces the impact of any potential key compromise."
+    why_needed: "Old keys may already be exposed or easier to brute-force."
+    risk_if_skip: "Attackers with stolen or guessed keys can keep reading data or impersonating services."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["disable-weak-crypto"]
+    refs:
+      - source: "NIST SP 800-57"
+        ref: "Key management"
+    params: {}
+
+  - id: re-encrypt-sensitive-data
+    phase: eradication
+    type: remediation
+    description: "Re-encrypt sensitive stored data that relied on weak or compromised keys."
+    ui_description: "Re-protect stored data (e.g., databases, files, backups) using new, stronger encryption."
+    impact: "Ensures long-term confidentiality even if old keys were compromised."
+    why_needed: "Simply rotating keys may not protect data encrypted with old keys in the past."
+    risk_if_skip: "Old data may still be readable by attackers who obtained old keys."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["rotate-keys-and-certificates"]
+    refs:
+      - source: "OWASP Cryptographic Failures"
+    params: {}
+
+  - id: validate-crypto-security
+    phase: recovery
+    type: validation
+    description: "Validate new crypto configurations with automated scanners and tests."
+    ui_description: "Run tools to confirm that only strong encryption settings are in use."
+    impact: "Provides evidence that crypto issues have been fixed correctly."
+    why_needed: "It is easy to misconfigure crypto; automated checks reduce mistakes."
+    risk_if_skip: "Subtle misconfigurations may remain unnoticed."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: ["re-encrypt-sensitive-data"]
+    refs:
+      - source: "SSL Labs and similar TLS testing guidance"
+    params: {}
+
+  - id: update-crypto-guidelines-and-training
+    phase: post_incident
+    type: policy
+    description: "Update internal crypto guidelines and developer training based on lessons learned."
+    ui_description: "Improve internal documentation and training so teams consistently use strong encryption in new systems."
+    impact: "Reduces the chance of repeating the same crypto mistakes."
+    why_needed: "People and processes must improve, not just the immediate fix."
+    risk_if_skip: "The organization may reintroduce weak crypto in future projects."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["validate-crypto-security"]
+    refs:
+      - source: "NIST SP 800-175B"
+        ref: "Guideline for Using Cryptographic Standards in the Federal Government"
+    params: {}

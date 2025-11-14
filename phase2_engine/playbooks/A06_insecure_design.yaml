@@ -1,0 +1,139 @@
+playbook_id: "A06_insecure_design"
+category: "A06:2025 Insecure Design"
+description: "Handle incidents caused by missing or flawed security design, not just implementation bugs."
+version: "1.0.0"
+
+nodes:
+  - id: schedule-threat-model-workshop
+    phase: preparation
+    type: policy
+    description: "Plan and run threat modeling sessions for high-risk systems or features."
+    ui_description: "Arrange a workshop to think through how attackers could misuse critical parts of the system."
+    impact: "Ensures that security risks are identified earlier in the design phase."
+    why_needed: "Security design flaws often come from not considering abuse scenarios up front."
+    risk_if_skip: "The same insecure design patterns may be repeated in future projects."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP Threat Modeling Cheat Sheet"
+        ref: "Perform structured threat modeling"
+    params: {}
+
+  - id: document-security-requirements
+    phase: preparation
+    type: policy
+    description: "Capture explicit security requirements using frameworks such as OWASP ASVS."
+    ui_description: "Write down clear security rules the system must follow, such as how to handle sensitive actions."
+    impact: "Gives engineers a concrete checklist for security behavior."
+    why_needed: "If security expectations are vague, insecure design decisions are more likely."
+    risk_if_skip: "Designs may optimize for convenience instead of safety."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP ASVS"
+        ref: "Security requirements definition"
+    params: {}
+
+  - id: detect-business-logic-abuse
+    phase: detection_analysis
+    type: detection
+    description: "Analyze logs and metrics for abnormal patterns like abuse of workflows or missing approvals."
+    ui_description: "Look for strange behavior in user flows, such as bypassing approvals or excessive actions."
+    impact: "Highlights areas where design may allow unintended or unsafe behavior."
+    why_needed: "Logic flaws often appear as unusual but technically 'valid' activity."
+    risk_if_skip: "Attackers may exploit weak process rules without triggering classic security alerts."
+    severity: medium
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "OWASP Business Logic Vulnerabilities"
+    params: {}
+
+  - id: enable-additional-rate-limits
+    phase: containment
+    type: containment
+    description: "Turn on or tighten rate limits and anti-automation controls for abused workflows."
+    ui_description: "Temporarily limit how often users can perform risky actions or requests."
+    impact: "Reduces the impact of automated or high-volume abuse attempts."
+    why_needed: "Rate limiting can quickly slow down attackers while design fixes are prepared."
+    risk_if_skip: "Attackers can repeatedly abuse the risky flow at high volume."
+    severity: high
+    sensitivity: medium
+    auto: true
+    requires: ["detect-business-logic-abuse"]
+    refs:
+      - source: "OWASP Proactive Controls"
+        ref: "Implement appropriate rate limiting"
+    params: {}
+
+  - id: temporarily-disable-insecure-flow
+    phase: containment
+    type: containment
+    description: "Disable or restrict the flawed workflow until a secure redesign is ready."
+    ui_description: "Turn off or limit the vulnerable feature so users cannot trigger unsafe behavior."
+    impact: "Stops the immediate risk at the cost of reduced functionality."
+    why_needed: "Some design flaws are too severe to leave active while working on a long-term fix."
+    risk_if_skip: "Attackers may continue exploiting the insecure workflow."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["enable-additional-rate-limits"]
+    refs:
+      - source: "NIST SP 800-61"
+        ref: "Containment strategies"
+    params: {}
+
+  - id: redesign-workflow-with-threat-model
+    phase: eradication
+    type: remediation
+    description: "Redesign the affected workflow using threat modeling results and security requirements."
+    ui_description: "Update the way the process works so that necessary security checks and approvals are built in."
+    impact: "Provides a safer, more robust design that can be implemented and deployed."
+    why_needed: "Quick patches do not solve deep design issues; the design must change."
+    risk_if_skip: "Workarounds may reduce risk temporarily but the root problem remains."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["temporarily-disable-insecure-flow", "schedule-threat-model-workshop", "document-security-requirements"]
+    refs:
+      - source: "OWASP Secure Design Principles"
+    params: {}
+
+  - id: implement-and-test-redesigned-flow
+    phase: recovery
+    type: remediation
+    description: "Implement the redesigned workflow and verify it with functional and security tests."
+    ui_description: "Build and test the new design to make sure it works for users and blocks the previous abuse."
+    impact: "Restores functionality in a more secure way."
+    why_needed: "Redesign is only effective if correctly implemented and tested."
+    risk_if_skip: "The new design might introduce new issues or fail to close the old gap."
+    severity: medium
+    sensitivity: medium
+    auto: false
+    requires: ["redesign-workflow-with-threat-model"]
+    refs:
+      - source: "OWASP Testing Guide"
+        ref: "Business logic testing"
+    params: {}
+
+  - id: update-sdlc-checkpoints-for-design
+    phase: post_incident
+    type: policy
+    description: "Add secure design and threat modeling checkpoints to the SDLC for similar features."
+    ui_description: "Update your development process so future features have mandatory security design reviews."
+    impact: "Improves the organization’s long-term ability to avoid insecure designs."
+    why_needed: "Embedding security into the process is more effective than relying on ad hoc reviews."
+    risk_if_skip: "Future projects might repeat the same mistakes in new places."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["implement-and-test-redesigned-flow"]
+    refs:
+      - source: "OWASP SAMM"
+        ref: "Secure design practices"
+    params: {}

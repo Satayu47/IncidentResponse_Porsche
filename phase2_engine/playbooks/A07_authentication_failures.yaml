@@ -1,0 +1,172 @@
+playbook_id: "A07_authentication_failures"
+category: "A07:2025 Authentication Failures"
+description: "Handle weak or broken login, credential, and session management mechanisms."
+version: "1.0.0"
+
+nodes:
+  - id: enforce-modern-password-policy
+    phase: preparation
+    type: policy
+    description: "Enforce password requirements aligned with modern standards (length, complexity, reuse checks)."
+    ui_description: "Set rules so user passwords are long and strong enough, and checked against known breached passwords."
+    impact: "Reduces the risk of easy password guessing or reuse."
+    why_needed: "Weak, reused passwords are a common entry point for attackers."
+    risk_if_skip: "Attackers may easily guess or reuse passwords from other breaches."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "NIST SP 800-63B"
+        ref: "Digital Identity Guidelines"
+    params: {}
+
+  - id: enable-mfa-for-high-value-accounts
+    phase: preparation
+    type: policy
+    description: "Require multi-factor authentication for administrator and sensitive user accounts."
+    ui_description: "Add a second step (like an app or token) for logins to important accounts, not just a password."
+    impact: "Makes it much harder for attackers to use stolen passwords."
+    why_needed: "MFA greatly reduces the risk of account takeover."
+    risk_if_skip: "A stolen password alone may be enough to take over critical accounts."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: []
+    refs:
+      - source: "OWASP Authentication Cheat Sheet"
+    params: {}
+
+  - id: detect-bruteforce-and-credential-stuffing
+    phase: detection_analysis
+    type: detection
+    description: "Detect repeated failed logins, password spraying, or credential stuffing patterns."
+    ui_description: "Watch for many login attempts, especially from the same IP or against many accounts."
+    impact: "Alerts the team when attackers are trying large numbers of password guesses."
+    why_needed: "Brute force activity is a strong signal of an ongoing attack."
+    risk_if_skip: "Massive guessing attempts may continue unnoticed until accounts are compromised."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "MITRE ATT&CK T1110"
+        ref: "Brute Force"
+    params: {}
+
+  - id: detect-suspicious-session-activity
+    phase: detection_analysis
+    type: detection
+    description: "Monitor for abnormal session behavior, such as unusual geolocation or device changes."
+    ui_description: "Check if a user’s session appears from unexpected countries or devices at odd times."
+    impact: "Helps spot accounts that might already be taken over."
+    why_needed: "Account takeover often looks like normal login but from unusual locations or devices."
+    risk_if_skip: "Compromised sessions might be active for a long time without being noticed."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: []
+    refs:
+      - source: "OWASP Session Management"
+    params: {}
+
+  - id: block-attack-sources
+    phase: containment
+    type: containment
+    description: "Block IPs, ASNs, or user agents identified as sources of attack traffic."
+    ui_description: "Block suspicious sources that generate many failed logins or malicious behavior."
+    impact: "Reduces ongoing brute force or credential stuffing attempts."
+    why_needed: "Blocking attack sources reduces noise and immediate risk."
+    risk_if_skip: "Attackers can keep trying different passwords with little resistance."
+    severity: high
+    sensitivity: medium
+    auto: true
+    requires: ["detect-bruteforce-and-credential-stuffing"]
+    refs:
+      - source: "NIST SP 800-61"
+        ref: "Containment of network-based attacks"
+    params: {}
+
+  - id: invalidate-suspicious-sessions
+    phase: containment
+    type: containment
+    description: "Invalidate existing sessions for accounts suspected of compromise."
+    ui_description: "Force suspicious users to log in again so attackers lose access even if they stole a session."
+    impact: "Kicks attackers out of active sessions immediately."
+    why_needed: "Session tokens can be stolen or reused; invalidation removes these from play."
+    risk_if_skip: "Attackers may keep using stolen sessions without needing to log in again."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["detect-suspicious-session-activity"]
+    refs:
+      - source: "OWASP Authentication Cheat Sheet"
+        ref: "Session invalidation"
+    params: {}
+
+  - id: patch-authentication-components
+    phase: eradication
+    type: remediation
+    description: "Patch or reconfigure vulnerable authentication modules or identity providers."
+    ui_description: "Fix bugs or misconfigurations in login services or identity systems."
+    impact: "Reduces the chance of repeated exploitation of the same weaknesses."
+    why_needed: "Some breaches are caused by bugs or weak settings in auth components."
+    risk_if_skip: "Attackers can keep exploiting the same authentication weaknesses."
+    severity: critical
+    sensitivity: high
+    auto: false
+    requires: ["block-attack-sources", "invalidate-suspicious-sessions"]
+    refs:
+      - source: "NVD"
+        ref: "Auth component CVEs"
+    params: {}
+
+  - id: reset-credentials-for-affected-accounts
+    phase: eradication
+    type: remediation
+    description: "Reset passwords or revoke tokens for accounts confirmed or strongly suspected to be compromised."
+    ui_description: "Force affected users to set new passwords or re-enroll tokens so attackers lose access."
+    impact: "Removes stolen or guessed credentials from attacker control."
+    why_needed: "If a password or token was exposed, it must no longer be usable."
+    risk_if_skip: "Attackers may return at any time with credentials they already stole."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["patch-authentication-components"]
+    refs:
+      - source: "CIS Controls v8 6.4"
+        ref: "Account access revocation"
+    params: {}
+
+  - id: validate-auth-system-health
+    phase: recovery
+    type: validation
+    description: "Verify that authentication, MFA, and session management behave as expected after fixes."
+    ui_description: "Test logins, MFA, and session timeouts to ensure they work correctly for users."
+    impact: "Builds confidence that systems are safe to use again."
+    why_needed: "Changes to auth can accidentally break usability or leave gaps."
+    risk_if_skip: "Users may face login problems or hidden vulnerabilities may remain."
+    severity: medium
+    sensitivity: medium
+    auto: false
+    requires: ["reset-credentials-for-affected-accounts"]
+    refs:
+      - source: "OWASP Testing Guide"
+        ref: "Authentication and session testing"
+    params: {}
+
+  - id: tune-auth-policies-and-alerts
+    phase: post_incident
+    type: policy
+    description: "Update authentication policies, MFA requirements, and detection rules based on the incident."
+    ui_description: "Adjust lockout rules, MFA coverage, and alert thresholds to better catch attacks in the future."
+    impact: "Improves the organization’s resilience against similar attacks."
+    why_needed: "Incident experience should feed into stronger policies and detections."
+    risk_if_skip: "The same types of attacks may succeed again with similar impact."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["validate-auth-system-health"]
+    refs:
+      - source: "OWASP Authentication Cheat Sheet"
+    params: {}

@@ -1,0 +1,152 @@
+playbook_id: "A09_logging_alerting_failure"
+category: "A09:2025 Logging & Alerting Failures"
+description: "Handle situations where logs or alerts are missing, incomplete, or misconfigured."
+version: "1.0.0"
+
+nodes:
+  - id: enable-central-log-collection
+    phase: preparation
+    type: config
+    description: "Configure centralized logging for critical systems, apps, and security tools."
+    ui_description: "Send logs from key systems into a central place to make them easier to search and monitor."
+    impact: "Improves visibility into events across the environment."
+    why_needed: "Scattered logs make it difficult to see an attack’s full picture."
+    risk_if_skip: "Important events may be missed or buried on individual machines."
+    severity: high
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "CIS Controls v8 8"
+        ref: "Audit log management"
+    params: {}
+
+  - id: define-security-log-standards
+    phase: preparation
+    type: policy
+    description: "Define required fields and formats for security-related logs."
+    ui_description: "Decide which details (e.g., user, IP, action) must always be recorded in security logs."
+    impact: "Makes logs more consistent and useful for investigations."
+    why_needed: "Incomplete logs may omit key information needed to understand incidents."
+    risk_if_skip: "Analysts may be unable to reconstruct what really happened."
+    severity: medium
+    sensitivity: medium
+    auto: false
+    requires: []
+    refs:
+      - source: "NIST SP 800-92"
+        ref: "Guide to Computer Security Log Management"
+    params: {}
+
+  - id: detect-missing-or-silent-sources
+    phase: detection_analysis
+    type: detection
+    description: "Detect systems or applications that are not sending expected logs."
+    ui_description: "Check if any servers or apps have stopped logging or never started logging properly."
+    impact: "Identifies gaps in monitoring coverage."
+    why_needed: "Attackers may target systems where logging is weak or disabled."
+    risk_if_skip: "You may have 'blind spots' where attacks can occur unseen."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["enable-central-log-collection"]
+    refs:
+      - source: "OWASP Logging Cheat Sheet"
+    params: {}
+
+  - id: detect-alerting-gaps
+    phase: detection_analysis
+    type: detection
+    description: "Review SIEM rules and coverage to identify critical events that are not generating alerts."
+    ui_description: "Check if important security events are being logged but never generate alerts for analysts."
+    impact: "Reveals where detection logic is incomplete or outdated."
+    why_needed: "Logging alone is not enough; alerts are needed for timely response."
+    risk_if_skip: "Serious events may be buried in logs and never acted on."
+    severity: high
+    sensitivity: low
+    auto: true
+    requires: ["define-security-log-standards"]
+    refs:
+      - source: "OWASP Top 10 Logging & Monitoring"
+    params: {}
+
+  - id: temporarily-increase-log-verbosity
+    phase: containment
+    type: containment
+    description: "Temporarily raise logging level on affected systems to capture more detail."
+    ui_description: "Turn on more detailed logging for a short time on systems involved in the incident."
+    impact: "Improves insight during the investigation but may generate more data."
+    why_needed: "Extra details can help confirm the attack path and scope."
+    risk_if_skip: "Important context about the incident may be missing."
+    severity: medium
+    sensitivity: medium
+    auto: true
+    requires: ["detect-missing-or-silent-sources", "detect-alerting-gaps"]
+    refs:
+      - source: "NIST SP 800-61"
+    params: {}
+
+  - id: restore-broken-log-pipelines
+    phase: containment
+    type: containment
+    description: "Restore or fix broken log forwarding and ingestion into the SIEM."
+    ui_description: "Repair the connection that sends logs from systems into your monitoring tools."
+    impact: "Ensures current and future events are visible again."
+    why_needed: "If logs are not flowing, you are effectively blind to new activity."
+    risk_if_skip: "Active incidents may continue without being observable in real time."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["temporarily-increase-log-verbosity"]
+    refs:
+      - source: "CIS Controls v8 8.3"
+        ref: "Ensure log integrity and availability"
+    params: {}
+
+  - id: fix-logging-configuration-issues
+    phase: eradication
+    type: remediation
+    description: "Correct misconfigurations causing missing or incomplete logs."
+    ui_description: "Adjust settings so logs capture the right events at the right level on a permanent basis."
+    impact: "Improves reliability and completeness of logs going forward."
+    why_needed: "Temporary fixes are not enough; logging must be properly configured long-term."
+    risk_if_skip: "Future attacks may again slip through with poor visibility."
+    severity: high
+    sensitivity: high
+    auto: false
+    requires: ["restore-broken-log-pipelines"]
+    refs:
+      - source: "OWASP Logging & Monitoring Failures"
+    params: {}
+
+  - id: normalize-log-levels-after-incident
+    phase: recovery
+    type: remediation
+    description: "Return logging levels to normal after confirming proper coverage."
+    ui_description: "Turn logging back to normal detail levels to avoid unnecessary noise and storage usage."
+    impact: "Maintains a healthy balance between visibility and overhead."
+    why_needed: "Too much logging can hide important events in noise and overload systems."
+    risk_if_skip: "Systems may generate more logs than needed, complicating future analysis."
+    severity: low
+    sensitivity: low
+    auto: true
+    requires: ["fix-logging-configuration-issues"]
+    refs:
+      - source: "NIST SP 800-92"
+    params: {}
+
+  - id: enhance-detection-use-cases
+    phase: post_incident
+    type: policy
+    description: "Add or improve detection rules for the type of incident that occurred."
+    ui_description: "Create or refine alert rules so similar attacks are detected faster next time."
+    impact: "Improves future detection accuracy and response speed."
+    why_needed: "Incidents reveal where alerts were missing or too weak."
+    risk_if_skip: "The organization may remain vulnerable to the same blind spots."
+    severity: low
+    sensitivity: low
+    auto: false
+    requires: ["normalize-log-levels-after-incident"]
+    refs:
+      - source: "OWASP Top 10 A09"
+    params: {}
