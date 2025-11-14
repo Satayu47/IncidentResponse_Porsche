@@ -320,9 +320,16 @@ REPORT_CATEGORY_MAP = {
     "xss": "Injection Attack",
     "ssrf": "Injection Attack",
     "rce": "Injection Attack",
+    "injection": "Injection Attack",
     "bruteforce": "Denial of Service",
     "dos": "Denial of Service",
+    "broken_authentication": "Denial of Service",
+    "broken_access_control": "Broken Access Control",
+    "sensitive_data_exposure": "Cryptographic Failures",
+    "security_misconfiguration": "Misconfiguration",
     "misconfig": "Misconfiguration",
+    "vulnerable_component": "Vulnerable Components",
+    "malware": "Malware",
     "phishing": "Phishing",
     "other": "Other"
 }
@@ -763,7 +770,8 @@ if user_text:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
             # 6) Download and Phase 2 Response
-            if st.session_state.phase1_output and score >= THRESH_GO and label != "other":
+            # Show if confidence is high enough, regardless of mapped category
+            if st.session_state.phase1_output and score >= THRESH_GO:
                 st.markdown("---")
                 st.markdown("### Next Steps")
                 

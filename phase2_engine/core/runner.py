@@ -32,26 +32,36 @@ class Phase2Runner:
         
         # Map Phase 1 labels to Phase 2 playbook files
         playbook_mapping = {
+            # Incident type mappings
             "Injection Attack": "A05_injection.yaml",
-            "Denial of Service": "A07_authentication_failures.yaml",  # brute force
+            "Denial of Service": "A07_authentication_failures.yaml",
+            "Broken Access Control": "A01_broken_access_control.yaml",
+            "Cryptographic Failures": "A04_cryptographic_failures.yaml",
+            "Misconfiguration": "A02_security_misconfiguration.yaml",
+            "Vulnerable Components": "A03_supply_chain.yaml",
+            # Fine label mappings
+            "injection": "A05_injection.yaml",
+            "sql_injection": "A05_injection.yaml",
+            "xss": "A05_injection.yaml",
             "broken_access_control": "A01_broken_access_control.yaml",
             "broken_authentication": "A07_authentication_failures.yaml",
             "sensitive_data_exposure": "A04_cryptographic_failures.yaml",
             "security_misconfiguration": "A02_security_misconfiguration.yaml",
-            "Misconfiguration": "A02_security_misconfiguration.yaml",
+            "misconfig": "A02_security_misconfiguration.yaml",
             "insecure_design": "A06_insecure_design.yaml",
             "supply_chain": "A03_supply_chain.yaml",
             "integrity_failures": "A08_integrity_failures.yaml",
             "logging_failure": "A09_logging_alerting.yaml",
             "vulnerable_component": "A03_supply_chain.yaml",
+            "malware": "A05_injection.yaml",  # Treat as potential injection vector
         }
         
-        # Try mapping by incident_type first
-        playbook_file = playbook_mapping.get(incident_type)
+        # Try mapping by fine_label first (more specific)
+        playbook_file = playbook_mapping.get(fine_label)
         
-        # If not found, try fine_label
+        # If not found, try incident_type (more general)
         if not playbook_file:
-            playbook_file = playbook_mapping.get(fine_label)
+            playbook_file = playbook_mapping.get(incident_type)
         
         if playbook_file:
             playbook_path = self.playbook_dir / playbook_file
