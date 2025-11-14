@@ -1,10 +1,10 @@
 import time, json, io, os
 from pathlib import Path
 import streamlit as st
-from extractor import extract_entities, extract_IOCs, detect_symptoms
-from llm_adapter import classify_and_slots
-from nvd import fetch_cve, mitre_url
-from lc_retriever import build_inmemory_kb, format_retrieval_snippets
+from src.extractor import extract_entities, extract_IOCs, detect_symptoms
+from src.llm_adapter import classify_and_slots
+from src.nvd import fetch_cve, mitre_url
+from src.lc_retriever import build_inmemory_kb, format_retrieval_snippets
 
 # Load environment variables from .env file
 def load_env_file():
