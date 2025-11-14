@@ -747,10 +747,10 @@ if user_text:
             # This is the "chat" part that appears in the conversation history
             st.markdown(msg)
 
-            # ---------- Visual divider between chat and summary ----------
+            # ---------------- VISUAL SEPARATOR ----------------
             st.markdown("---")
 
-            # 6) Phase-1 handoff JSON (always produced, but not always shown in full)
+            # Prepare Phase-1 handoff JSON and category mapping
             report_category = REPORT_CATEGORY_MAP.get(label, "Other")
             st.session_state.phase1_output = {
                 "incident_type": report_category,
@@ -764,40 +764,48 @@ if user_text:
                 "timestamp_ms": round((time.perf_counter() - t0) * 1000, 1),
             }
 
-            # ---------- INCIDENT SUMMARY CARD (Phase-1) ----------
-            st.subheader("📌 Incident Summary (Phase-1)")
-            col1, col2 = st.columns(2)
+            # ---------------- INCIDENT SUMMARY CARD (Phase-1) ----------------
+            with st.container():
+                st.markdown("## 📌 Incident Summary (Phase-1)")
+                col1, col2 = st.columns(2)
 
-            with col1:
-                st.markdown(f"**Type:** {report_category}")
-                st.markdown(f"**Fine label:** `{label}`")
-                st.markdown(f"**Confidence:** {score:.2f}")
-            with col2:
-                # Simple severity suggestion based on confidence
-                if score >= 0.85:
-                    severity = "High"
-                elif score >= 0.6:
-                    severity = "Medium"
+                with col1:
+                    st.markdown(f"**Incident Type:** {report_category}")
+                    st.markdown(f"**Fine Label:** `{label}`")
+                    st.markdown(f"**Confidence:** `{score:.2f}`")
+
+                with col2:
+                    # Severity with visual indicators
+                    if score >= 0.85:
+                        severity = "🟥 High"
+                    elif score >= 0.6:
+                        severity = "🟧 Medium"
+                    else:
+                        severity = "🟨 Low / Unclear"
+                    st.markdown(f"**Severity:** {severity}")
+                    
+                    provider = os.getenv("LLM_PROVIDER", "openai")
+                    st.markdown(f"**Provider:** {provider.title()}")
+                    st.markdown(f"**User Level:** {user_level.title()}")
+
+                # Indicators row
+                indicators = []
+                if iocs.get("ip"):
+                    indicators.append(f"IP detected ({len(iocs['ip'])})")
+                if iocs.get("url"):
+                    indicators.append(f"URL detected ({len(iocs['url'])})")
+                if ents.cves:
+                    indicators.append(f"CVE detected ({len(ents.cves)})")
+
+                if indicators:
+                    st.markdown(f"**Indicators:** {' · '.join(indicators)}")
                 else:
-                    severity = "Low / Unclear"
-                st.markdown(f"**Suggested severity:** {severity}")
-                st.markdown(f"**User level:** {user_level.title()}")
+                    st.markdown("**Indicators:** (none detected)")
 
-            # IOC summary row
-            sig_parts = []
-            if iocs.get("ip"):
-                sig_parts.append(f"IP(s): {', '.join(iocs['ip'][:3])}")
-            if iocs.get("url"):
-                sig_parts.append(f"URL(s): {', '.join(iocs['url'][:3])}")
-            if ents.cves:
-                sig_parts.append(f"CVE(s): {', '.join(ents.cves[:3])}")
-            if sig_parts:
-                st.markdown("**Key indicators:** " + " · ".join(sig_parts))
-            else:
-                st.markdown("**Key indicators:** (none extracted yet)")
-
-            # ---------- IMMEDIATE ACTIONS (Phase-1 suggestions) ----------
-            st.subheader("🛠️ Immediate Actions (Phase-1 suggestions)")
+            # ---------------- IMMEDIATE ACTIONS (Phase-1) ----------------
+            st.markdown("---")
+            st.markdown("## 🛠 Immediate Actions (Phase-1)")
+            st.info("These are safe, beginner-friendly steps based on the classification.")
 
             immediate_actions_list = []
             if report_category == "Injection Attack":
@@ -837,15 +845,12 @@ if user_text:
                 ]
 
             for idx, action in enumerate(immediate_actions_list, start=1):
-                st.markdown(f"{idx}. {action}")
+                st.markdown(f"**{idx}.** {action}")
 
-            # ---------- PHASE-2 TRIGGER (Response Plan) ----------
+            # ---------------- PHASE-2 BUTTON ----------------
             st.markdown("---")
-            st.subheader("🚀 Next Steps - Phase-2 Response Automation")
-
-            st.markdown(
-                "✅ **Phase-1 analysis complete.** You can now trigger the automated response playbook engine."
-            )
+            st.markdown("## 🚀 Phase-2 Response Automation")
+            st.markdown("Phase-1 analysis complete. Run the automated playbook engine for structured response steps.")
 
             # Phase-2 button
             run_phase2 = st.button("▶ View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
@@ -916,21 +921,22 @@ if user_text:
                         st.error(f"❌ Phase-2 execution failed: {str(e)}")
                         st.session_state.show_phase2 = False
 
-            # ---------- ADVANCED DETAILS (JSON + links) ----------
-            with st.expander("🔧 Advanced details (Phase-2 input JSON)"):
+            # ---------------- ADVANCED JSON (Phase-1 → Phase-2 Input) ----------------
+            st.markdown("---")
+            with st.expander("🔧 Phase-1 JSON (Input to Phase-2) — Advanced"):
                 st.json(st.session_state.phase1_output)
+                
                 if ents.cves:
                     st.markdown("**MITRE CVE Links:**")
                     for c in ents.cves[:5]:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
-                # Download button lives inside the advanced section
-                import io
+                # Download button
                 buf = io.BytesIO(
                     json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8")
                 )
                 st.download_button(
-                    "Download Phase-1 Output (JSON)",
+                    "📥 Download Phase-1 Output (JSON)",
                     data=buf,
                     file_name="phase1_output.json",
                     mime="application/json",
