@@ -391,68 +391,82 @@ if "asked_slots" not in st.session_state:
 if "last_input_cache" not in st.session_state:
     st.session_state.last_input_cache = {}
 
-def templated_reply(user_text: str, label: str, score: float, iocs: dict,
-                    rationale: str, kb_present: bool, followup: str | None,
-                    user_level: str = "intermediate", candidates: list = None):
+def templated_reply(
+    user_text: str,
+    label: str,
+    score: float,
+    iocs: dict,
+    rationale: str,
+    kb_present: bool,
+    followup: str | None,
+    user_level: str = "intermediate",
+    candidates: list = None
+):
     """
-    Generate Phase-1 analysis response - classification only, no action steps.
+    Generate balanced Phase-1 analysis response.
     
-    Phase-1 algorithm outputs:
-    - OWASP classification (label)
-    - Confidence score
-    - Reasoning/rationale
-    - Clarification questions when uncertain
-    - JSON for Phase-2 handoff
-    
-    Action steps belong in Phase-2 playbooks only.
+    Adapts tone to user level while keeping responses:
+    - Not too long (3-5 paragraphs max)
+    - Not too short (still informative)
+    - Easy to read in chat history
     """
     parts = []
 
-    # Opening tone by user level
+    # ---- 1) Short, user-level-friendly opening ----
+    nice_label = label.replace("_", " ")
+
     if user_level == "novice":
-        parts.append("Let me explain this in simple terms:")
+        opening = "Let me explain what this probably is:"
     elif user_level == "expert":
-        parts.append("Here's the technical assessment:")
+        opening = "Here's the current assessment:"
     else:
-        parts.append("Alright, here's what I'm seeing:")
+        opening = "Here's what this looks like to me:"
 
-    # Confidence wording
+    parts.append(opening)
+
+    # ---- 2) Classification + confidence (1 sentence) ----
     if score >= 0.8:
-        conf_phrase = "high confidence"
+        conf = "I'm quite confident"
     elif score >= 0.6:
-        conf_phrase = "moderate confidence"
+        conf = "I'm somewhat confident"
     else:
-        conf_phrase = "low confidence"
+        conf = "I'm not very confident yet"
 
-    # Main classification line
-    parts.append(
-        f"**Likely classification:** {label.replace('_', ' ')} "
-        f"(*{conf_phrase}*, score = {score:.2f})"
-    )
+    parts.append(f"**Most likely type:** {nice_label} ({conf}, score {score:.2f}).")
 
-    # Reasoning
-    if rationale:
-        parts.append(f"**Why I think this:** {rationale}")
+    # ---- 3) Why (lightly trimmed so it's not too long) ----
+    # hard cap on rationale length to avoid huge paragraphs
+    max_len = 380
+    clean_rationale = rationale.strip() if rationale else ""
+    if len(clean_rationale) > max_len:
+        clean_rationale = clean_rationale[:max_len].rsplit(" ", 1)[0] + "…"
+
+    if clean_rationale:
+        parts.append(f"**Why I think this:** {clean_rationale}")
     else:
-        parts.append("**Why I think this:** based on patterns and keywords in your description.")
+        parts.append("**Why I think this:** based on patterns and keywords in what you described.")
 
-    # Indicators
-    sig = []
+    # ---- 4) Indicators (short & simple) ----
+    sig_bits = []
     if iocs.get("ip"):
-        sig.append(f"IP(s): {', '.join(iocs['ip'][:3])}")
+        sig_bits.append("IP address mentioned")
     if iocs.get("url"):
-        sig.append(f"URL(s): {', '.join(iocs['url'][:3])}")
+        sig_bits.append("URL mentioned")
     if iocs.get("cve"):
-        sig.append(f"CVE(s): {', '.join(iocs['cve'][:3])}")
-    parts.append("**Indicators I can see:** " + (" · ".join(sig) if sig else "none yet"))
+        sig_bits.append("CVE identifier mentioned")
 
-    # Knowledge base flag
-    if kb_present:
-        parts.append("I also pulled some related vulnerability/context data in the background.")
+    if sig_bits:
+        parts.append("**Technical clues I see:** " + ", ".join(sig_bits))
+    else:
+        parts.append("**Technical clues I see:** none yet.")
 
-    # Follow-up only when needed
+    # ---- 5) Optional follow-up when needed ----
     if followup:
-        parts.append(f"**To narrow this down:** {followup}")
+        if user_level == "novice":
+            prefix = "To help me be more accurate, can you tell me:"
+        else:
+            prefix = "To refine this further, I need:"
+        parts.append(f"**{prefix}** {followup}")
 
     return "\n\n".join(parts)
 
@@ -632,66 +646,45 @@ if user_text:
             }
 
             # ---------------- INCIDENT SUMMARY CARD (Phase-1) ----------------
-            with st.container():
-                st.markdown("## Incident Summary (Phase-1)")
-                col1, col2 = st.columns(2)
+            st.markdown("---")
+            st.subheader("Incident Summary")
 
-                with col1:
-                    st.markdown(f"**Incident Type:** {report_category}")
-                    st.markdown(f"**Fine Label:** `{label}`")
-                    st.markdown(f"**Confidence:** `{score:.2f}`")
+            st.markdown(f"- **Type:** {report_category}")
+            st.markdown(f"- **Label:** `{label}`")
+            st.markdown(f"- **Confidence:** {score:.2f}")
 
-                with col2:
-                    # Severity with visual indicators
-                    if score >= 0.85:
-                        severity = "🟥 High"
-                    elif score >= 0.6:
-                        severity = "🟧 Medium"
-                    else:
-                        severity = "🟨 Low / Unclear"
-                    st.markdown(f"**Severity:** {severity}")
-                    
-                    provider = os.getenv("LLM_PROVIDER", "openai")
-                    st.markdown(f"**Provider:** {provider.title()}")
-                    st.markdown(f"**User Level:** {user_level.title()}")
+            # Indicators (simple list)
+            indicators = []
+            if iocs.get("ip"):
+                indicators.append(f"IP detected ({len(iocs['ip'])})")
+            if iocs.get("url"):
+                indicators.append(f"URL detected ({len(iocs['url'])})")
+            if ents.cves:
+                indicators.append(f"CVE detected ({len(ents.cves)})")
 
-                # Indicators row
-                indicators = []
-                if iocs.get("ip"):
-                    indicators.append(f"IP detected ({len(iocs['ip'])})")
-                if iocs.get("url"):
-                    indicators.append(f"URL detected ({len(iocs['url'])})")
-                if ents.cves:
-                    indicators.append(f"CVE detected ({len(ents.cves)})")
-
-                if indicators:
-                    st.markdown(f"**Indicators:** {' · '.join(indicators)}")
-                else:
-                    st.markdown("**Indicators:** (none detected)")
+            if indicators:
+                st.markdown(f"- **Indicators:** {' · '.join(indicators)}")
+            else:
+                st.markdown("- **Indicators:** (none detected)")
 
             # ---------------- PHASE-2 BUTTON ----------------
             st.markdown("---")
-            st.markdown("## Phase-2 Response Automation")
-            st.markdown("Phase-1 classification complete. Run the automated playbook engine for detailed response steps.")
+            st.subheader("Phase-2 Automation")
 
-            # Phase-2 button
-            run_phase2 = st.button("View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
-            if run_phase2:
+            if st.button("Run Response Playbook (Phase-2)", type="primary", key="phase2_trigger"):
                 st.session_state.show_phase2 = True
             
             # Show Phase 2 results if button was clicked
             if st.session_state.get("show_phase2", False):
-                with st.spinner("🔄 Loading response playbook from Phase-2 engine..."):
+                with st.spinner("Loading response playbook..."):
                     try:
                         phase2_result = run_phase2_from_incident(
                             st.session_state.phase1_output,
-                            dry_run=True  # Safe simulation mode
+                            dry_run=True
                         )
                         
                         if phase2_result["status"] == "success":
-                            st.success("Phase-2 executed successfully")
-                            st.markdown("---")
-                            st.markdown("### Recommended Response Actions (Phase-2)")
+                            st.success("Phase-2 playbook executed")
                             st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
                             
                             # Group steps by phase
@@ -743,13 +736,13 @@ if user_text:
                         st.error(f"Phase-2 execution failed: {str(e)}")
                         st.session_state.show_phase2 = False
 
-            # ---------------- ADVANCED JSON (Phase-1 → Phase-2 Input) ----------------
+            # ---------------- ADVANCED JSON ----------------
             st.markdown("---")
-            with st.expander("Advanced: Phase-1 JSON (Input to Phase-2)"):
+            with st.expander("JSON sent to Phase-2"):
                 st.json(st.session_state.phase1_output)
                 
                 if ents.cves:
-                    st.markdown("**MITRE CVE Links:**")
+                    st.markdown("**CVE Links:**")
                     for c in ents.cves[:5]:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
@@ -758,9 +751,9 @@ if user_text:
                     json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8")
                 )
                 st.download_button(
-                    "Download Phase-1 Output (JSON)",
+                    "Download JSON",
                     data=buf,
-                    file_name="phase1_output.json",
+                    file_name="incident_report.json",
                     mime="application/json",
                 )
 
