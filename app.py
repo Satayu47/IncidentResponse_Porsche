@@ -220,13 +220,20 @@ if user_text:
                     st.write("🔍 Analyzing with Gemini AI...")
                     gemini_result = classify_and_slots(user_text, entities_dict, {"kb_context": kb_context})
                     
+                    # Store full Gemini response in session
+                    st.session_state.gemini_full_response = gemini_result
+                    
                     # Convert to expected format
                     out = {
                         "label": gemini_result.get("classification", "other").lower().replace(" ", "_").replace("-", "_"),
                         "score": gemini_result.get("confidence", 0.0),
                         "rationale": gemini_result.get("reasoning", ""),
                         "evidence": entities_dict.get("ip", []) + entities_dict.get("url", []) + entities_dict.get("cve", []),
-                        "missing": []
+                        "missing": gemini_result.get("missing_slots", []),
+                        "user_level": gemini_result.get("user_level", "novice"),
+                        "next_questions": gemini_result.get("next_questions", []),
+                        "immediate_actions": gemini_result.get("immediate_actions", []),
+                        "candidates": gemini_result.get("candidates", [])
                     }
                     st.session_state.last_input_cache[cache_key] = out
                     st.success("✅ Gemini AI analysis complete!")
@@ -312,6 +319,41 @@ if user_text:
                 followup=followup if (followup and score < THRESH_GO) else None
             )
             st.markdown(msg)
+            
+            # Display enhanced Gemini features
+            if out:
+                # Show multiple candidates if available
+                candidates = out.get("candidates", [])
+                if len(candidates) > 1 and score < 0.85:
+                    st.markdown("### 🤔 Other Possibilities")
+                    st.write("The system also considered these scenarios:")
+                    for cand in candidates[1:3]:  # Show top 2 alternatives
+                        cand_label = cand.get("label", "unknown")
+                        cand_score = cand.get("score", 0)
+                        if cand_score >= 0.3:
+                            st.write(f"- **{cand_label.replace('_', ' ').title()}**: {cand_score:.0%} confidence")
+                
+                # Show immediate actions for high confidence
+                immediate_actions = out.get("immediate_actions", [])
+                if immediate_actions and score >= THRESH_GO:
+                    st.markdown("### ⚡ Immediate Actions")
+                    for idx, action in enumerate(immediate_actions[:4], 1):
+                        st.write(f"{idx}. {action}")
+                
+                # Show next questions for medium/low confidence
+                next_questions = out.get("next_questions", [])
+                if next_questions and score < THRESH_GO:
+                    st.markdown("### 🔍 Need More Info")
+                    st.write("To better assess this incident, please answer:")
+                    for idx, question in enumerate(next_questions[:3], 1):
+                        st.write(f"{idx}. {question}")
+                
+                # Show user level detection
+                user_level = out.get("user_level", "novice")
+                if user_level == "expert":
+                    st.info("💡 **Expert mode detected** - Providing technical details")
+                elif user_level == "novice":
+                    st.info("💡 **Beginner-friendly mode** - Providing step-by-step guidance")
 
             # 5) Phase-2 handoff JSON
             report_category = REPORT_CATEGORY_MAP.get(label, "Other")
