@@ -72,7 +72,7 @@ passed = 0
 failed = 0
 
 for test in test_cases:
-    print(f"\n🔍 Testing: {test['name']}")
+    print(f"\n[TEST] {test['name']}")
     print(f"Input: {test['input'][:60]}...")
     
     try:
@@ -105,12 +105,12 @@ for test in test_cases:
         is_correct = False
         if test['expected'] == 'any':
             is_correct = True  # Just testing that it works
-            print(f"✅ PASS - System responded successfully")
+            print(f"[PASS] System responded successfully")
         elif test['expected'] in classification.lower() or classification.lower() in test['expected']:
             is_correct = True
-            print(f"✅ PASS - Correctly classified as {classification}")
+            print(f"[PASS] Correctly classified as {classification}")
         else:
-            print(f"⚠️  CLOSE - Expected {test['expected']}, got {classification}")
+            print(f"[CLOSE] Expected {test['expected']}, got {classification}")
             is_correct = confidence >= 0.7  # Accept if high confidence
             
         if is_correct:
@@ -119,7 +119,7 @@ for test in test_cases:
             failed += 1
             
     except Exception as e:
-        print(f"❌ ERROR: {str(e)}")
+        print(f"[ERROR] {str(e)}")
         failed += 1
 
 print("\n" + "=" * 60)
