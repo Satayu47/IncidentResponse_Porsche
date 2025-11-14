@@ -391,202 +391,69 @@ if "asked_slots" not in st.session_state:
 if "last_input_cache" not in st.session_state:
     st.session_state.last_input_cache = {}
 
-# Copilot: Make the chatbot responses more useful and action-oriented.
-#
-# Current problems:
-# - Too much meta text like "Other possibilities", "Beginner-friendly mode".
-# - Not enough concrete "What you should do now".
-#
-# New behavior for templated_reply:
-#
-# 1) For every response with score >= THRESH_LOW:
-#    - ALWAYS include a section:
-#          **What you should do now (simple steps):**
-#          - ...
-#          - ...
-#    - The steps must be SAFE, high-level triage, not destructive.
-#
-# 2) Remove or simplify noisy sections:
-#    - Remove "🤔 Other Possibilities" and "🔍 Need More Info" headings.
-#    - Instead, use one short line for alternatives if needed.
-#
-# 3) Keep this structure in the reply:
-#    - Opening sentence (adapted to user_level).
-#    - **Likely issue:** <label> with confidence.
-#    - **What you should do now (simple steps):** bullet list (2–4 items).
-#    - **Why I think this:** short rationale.
-#    - Optionally: one line about other possibilities if candidates exist.
-#    - Follow-up question (if score < THRESH_GO).
-#
-# 4) Do NOT change logic for:
-#    - label, score, kb_present, followup calculation.
-#    - Only change how the message text is composed.
-
-def templated_reply(user_text: str, label: str, score: float, iocs: dict, rationale: str, kb_present: bool, followup: str|None, user_level: str = "novice", candidates: list = None):
+def templated_reply(user_text: str, label: str, score: float, iocs: dict,
+                    rationale: str, kb_present: bool, followup: str | None,
+                    user_level: str = "intermediate", candidates: list = None):
     """
-    Generate actionable, user-friendly incident response with concrete next steps.
+    Generate Phase-1 analysis response - classification only, no action steps.
     
-    Focus on:
-    - Clear likely issue
-    - Concrete action steps (safe triage)
-    - Brief explanation
-    - Follow-up questions if needed
+    Phase-1 algorithm outputs:
+    - OWASP classification (label)
+    - Confidence score
+    - Reasoning/rationale
+    - Clarification questions when uncertain
+    - JSON for Phase-2 handoff
+    
+    Action steps belong in Phase-2 playbooks only.
     """
-    sig = []
-    if iocs.get("ip"):  sig.append(f"ip={', '.join(iocs['ip'][:2])}")
-    if iocs.get("url"): sig.append(f"url={', '.join(iocs['url'][:1])}")
-    if iocs.get("cve"): sig.append(f"cve={', '.join(iocs['cve'][:2])}")
-    signals = " · ".join(sig) if sig else "no indicators yet"
-
-    import random
     parts = []
-    
-    # 1) Opening adapted to user level and confidence
-    if score >= 0.7:
-        if user_level == "expert":
-            parts.append(random.choice(["Clear classification.", "High confidence read.", "Analysis complete."]))
-        elif user_level == "intermediate":
-            parts.append(random.choice(["Got a clear read on this.", "Pretty straightforward case.", "Clear classification here."]))
-        else:  # novice
-            parts.append(random.choice([
-                "I've looked at what you described.",
-                "Okay, I've analyzed your report.",
-                "Alright, I've reviewed the details."
-            ]))
+
+    # Opening tone by user level
+    if user_level == "novice":
+        parts.append("Let me explain this in simple terms:")
+    elif user_level == "expert":
+        parts.append("Here's the technical assessment:")
+    else:
+        parts.append("Alright, here's what I'm seeing:")
+
+    # Confidence wording
+    if score >= 0.8:
+        conf_phrase = "high confidence"
     elif score >= 0.6:
-        if user_level == "expert":
-            parts.append(random.choice(["Working hypothesis.", "Probable classification.", "Likely scenario."]))
-        elif user_level == "intermediate":
-            parts.append(random.choice(["I have a working theory here.", "Got a probable classification."]))
-        else:  # novice
-            parts.append(random.choice([
-                "I've looked at what you described.",
-                "Okay, I have a pretty good idea of what's happening.",
-                "I think I know what's going on here."
-            ]))
+        conf_phrase = "moderate confidence"
     else:
-        if user_level == "expert":
-            parts.append(random.choice(["Low confidence.", "Insufficient data.", "Classification unclear."]))
-        elif user_level == "intermediate":
-            parts.append(random.choice(["This one's unclear to me.", "Not enough to work with here."]))
-        else:  # novice
-            parts.append(random.choice([
-                "I'm having a bit of trouble understanding this one.",
-                "This is a bit unclear to me right now.",
-                "I need more information to help you properly."
-            ]))
-    
-    # 2) Likely issue with confidence
-    label_display = label.replace('_', ' ')
-    if label == "other" and score < 0.6:
-        parts.append(f"**Likely issue:** Unclear / needs more details (confidence ~{score:.2f})")
+        conf_phrase = "low confidence"
+
+    # Main classification line
+    parts.append(
+        f"**Likely classification:** {label.replace('_', ' ')} "
+        f"(*{conf_phrase}*, score = {score:.2f})"
+    )
+
+    # Reasoning
+    if rationale:
+        parts.append(f"**Why I think this:** {rationale}")
     else:
-        parts.append(f"**Likely issue:** {label_display} (confidence ~{score:.2f})")
-    
-    # 3) Action steps - concrete, safe triage steps
-    actions = []
-    if score >= THRESH_LOW:
-        if label in ("security_misconfiguration", "misconfig", "misconfiguration", "other"):
-            actions = [
-                "Ask your developer or IT team if there was a recent deployment, migration, or maintenance operation.",
-                "Check if there's a backup or migration script that can recreate the missing table/resource.",
-                "Avoid making manual database or configuration changes until someone reviews the situation.",
-                "Check server logs around the time the issue appeared for any errors or warnings."
-            ]
-        elif label in ("injection", "sql_injection", "xss", "command_injection"):
-            actions = [
-                "Temporarily reduce exposure of the affected page or form if possible (disable or restrict access).",
-                "Capture any suspicious input or payloads you saw - save screenshots or copy the exact text.",
-                "Notify your security or development team immediately to review logs around the time of the incident.",
-                "Do not attempt to 'fix' the input manually - preserve evidence for investigation."
-            ]
-        elif label in ("broken_authentication", "authentication_failures", "bruteforce"):
-            actions = [
-                "Force logout the affected user account and reset their password.",
-                "Check if MFA is enabled for the account - if not, enable it now.",
-                "Review login logs for the affected account and any unusual IP addresses or locations.",
-                "Notify the security team if you see continued failed login attempts or unusual patterns."
-            ]
-        elif label in ("broken_access_control", "authorization_bypass", "idor"):
-            actions = [
-                "Temporarily disable or restrict access to the affected functionality if possible.",
-                "Document exactly what the user was able to access that they shouldn't have.",
-                "Notify your development team to review authorization checks for this resource.",
-                "Check logs to see if other users may have exploited the same issue."
-            ]
-        elif label in ("sensitive_data_exposure", "crypto", "cryptographic_failures"):
-            actions = [
-                "Identify what sensitive data may have been exposed (passwords, credit cards, personal info, etc.).",
-                "If credentials were exposed, force password resets for affected users immediately.",
-                "Notify your security team and consider whether breach notification is required.",
-                "Disable the insecure endpoint or communication channel until it can be properly secured."
-            ]
-        elif label in ("vulnerable_component", "cve"):
-            actions = [
-                "Identify the exact version of the vulnerable software component mentioned.",
-                "Check if a security patch or updated version is available from the vendor.",
-                "If a patch exists, prioritize applying it - especially if this CVE is actively exploited.",
-                "If no patch exists yet, consider workarounds like disabling the feature or restricting access."
-            ]
-        elif label in ("malware", "ransomware"):
-            actions = [
-                "Immediately disconnect the affected system from the network to prevent spread.",
-                "Do not attempt to clean or fix it yourself - preserve it for forensics.",
-                "Notify your IT/security team immediately - this may require incident response procedures.",
-                "If you have backups, verify they are clean before considering restoration."
-            ]
-        elif label in ("phishing", "social_engineering"):
-            actions = [
-                "Do not click any links or download any attachments from the suspicious message.",
-                "Forward the phishing email to your IT/security team for analysis.",
-                "If you already clicked a link or entered credentials, change your password immediately.",
-                "Report this to your security team so they can warn other users and block the sender."
-            ]
-        else:
-            # Generic safe actions for unknown scenarios
-            actions = [
-                "Document exactly what happened, including any error messages or unusual behavior.",
-                "If possible, take screenshots or save logs showing the issue.",
-                "Avoid making changes that might destroy evidence or make the problem worse.",
-                "Contact your IT or security team for guidance on next steps."
-            ]
-        
-        parts.append("\n**What you should do now (simple steps):**")
-        for action in actions[:4]:  # Show top 4 actions
-            parts.append(f"- {action}")
-    
-    # 4) Why I think this - brief rationale
-    if rationale and score >= THRESH_LOW:
-        # Clean up rationale to be more user-friendly
-        why_text = rationale
-        if len(why_text) > 200:
-            why_text = why_text[:200] + "..."
-        parts.append(f"\n**Why I think this:** {why_text}")
-    
-    # 5) Indicators if present
-    if signals != "no indicators yet":
-        parts.append(f"\n**Indicators found:** {signals}")
-    
+        parts.append("**Why I think this:** based on patterns and keywords in your description.")
+
+    # Indicators
+    sig = []
+    if iocs.get("ip"):
+        sig.append(f"IP(s): {', '.join(iocs['ip'][:3])}")
+    if iocs.get("url"):
+        sig.append(f"URL(s): {', '.join(iocs['url'][:3])}")
+    if iocs.get("cve"):
+        sig.append(f"CVE(s): {', '.join(iocs['cve'][:3])}")
+    parts.append("**Indicators I can see:** " + (" · ".join(sig) if sig else "none yet"))
+
+    # Knowledge base flag
     if kb_present:
-        parts.append("_(Plus: CVE vulnerability data was used to enrich this analysis)_")
-    
-    # 6) Other possibilities - compact single line
-    if candidates and len(candidates) > 1:
-        alt = [c for c in candidates if c.get("label", "").lower().replace(" ", "_") != label][:1]
-        if alt:
-            alt_label = alt[0].get("label", "unknown").replace("_", " ")
-            alt_score = alt[0].get("score", 0.0)
-            parts.append(f"\n_I'm also considering: **{alt_label}** (~{alt_score:.2f}), but I'd need more evidence to be sure._")
-    
-    # 7) Follow-up question if needed
-    if followup and score < THRESH_GO:
-        if user_level == "expert":
-            parts.append(f"\n**Q:** {followup}")
-        elif user_level == "intermediate":
-            parts.append(f"\n**Quick question:** {followup}")
-        else:  # novice
-            parts.append(f"\n**To help me understand better:** {followup}")
-            
+        parts.append("I also pulled some related vulnerability/context data in the background.")
+
+    # Follow-up only when needed
+    if followup:
+        parts.append(f"**To narrow this down:** {followup}")
+
     return "\n\n".join(parts)
 
 # Render prior messages
@@ -802,55 +669,10 @@ if user_text:
                 else:
                     st.markdown("**Indicators:** (none detected)")
 
-            # ---------------- IMMEDIATE ACTIONS (Phase-1) ----------------
-            st.markdown("---")
-            st.markdown("## Immediate Actions (Phase-1)")
-            st.info("These are safe, beginner-friendly steps based on the classification.")
-
-            immediate_actions_list = []
-            if report_category == "Injection Attack":
-                immediate_actions_list = [
-                    "Temporarily reduce exposure of the affected page or form if possible (disable or restrict access).",
-                    "Capture any suspicious input or payload you saw – save screenshots or copy the exact text.",
-                    "Notify your security or development team immediately to review logs around the time of the incident.",
-                    "Do not attempt to 'fix' the input handling manually in production until a proper patch is prepared.",
-                ]
-            elif report_category == "Broken Access Control":
-                immediate_actions_list = [
-                    "Confirm which roles/accounts can currently access the sensitive function or endpoint.",
-                    "Temporarily restrict or disable access to the affected feature for normal users.",
-                    "Review recent access logs for unusual or unauthorized use of the feature.",
-                    "Work with developers to verify that authorization checks are correctly enforced.",
-                ]
-            elif report_category in ["Denial of Service", "Authentication Failure"]:
-                immediate_actions_list = [
-                    "Check for abnormal login attempts (e.g., many failures from the same IP or account).",
-                    "Consider temporarily locking targeted accounts if you suspect brute-force or credential stuffing.",
-                    "Confirm that MFA and password policies are correctly enforced for sensitive accounts.",
-                ]
-            elif report_category == "Misconfiguration":
-                immediate_actions_list = [
-                    "Check whether there were any recent deployments, configuration changes, or database migrations.",
-                    "Coordinate with the responsible admin/developer to review config files, environment variables, and scripts.",
-                    "Avoid making ad-hoc manual changes in production until the root cause is understood.",
-                    "If data or tables are missing, verify backups and restoration procedures before restoring anything.",
-                ]
-            else:
-                # Generic safe triage if category is unclear
-                immediate_actions_list = [
-                    "Write down what you were doing just before the issue occurred (page, action, time).",
-                    "Capture any visible error messages or screenshots.",
-                    "Notify your IT/security team that something suspicious or unexpected happened.",
-                    "Avoid making major changes until someone has reviewed the situation.",
-                ]
-
-            for idx, action in enumerate(immediate_actions_list, start=1):
-                st.markdown(f"**{idx}.** {action}")
-
             # ---------------- PHASE-2 BUTTON ----------------
             st.markdown("---")
             st.markdown("## Phase-2 Response Automation")
-            st.markdown("Phase-1 analysis complete. Run the automated playbook engine for structured response steps.")
+            st.markdown("Phase-1 classification complete. Run the automated playbook engine for detailed response steps.")
 
             # Phase-2 button
             run_phase2 = st.button("View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
