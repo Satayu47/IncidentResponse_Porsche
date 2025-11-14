@@ -31,7 +31,6 @@ if PROVIDER == "gemini":
 if PROVIDER == "openai":
     try:
         from openai import OpenAI
-        print("Debug: OpenAI imported successfully")
     except ImportError:
         print("Warning: openai not available")
 
@@ -426,18 +425,13 @@ def classify_and_slots(user_text: str, entities: dict, context: dict) -> dict:
     
     try:
         if PROVIDER == "gemini":
-            print(f"Debug: Using Gemini with model {GEMINI_MODEL}")
             result = _call_gemini(prompt)
-            print(f"Debug: Gemini result: {result}")
         else:
-            print(f"Debug: Using OpenAI with model {OPENAI_MODEL}")
             result = _call_openai(prompt)
-            print(f"Debug: OpenAI result: {result}")
         
         return _normalize_slots_output(result)
         
     except Exception as e:
-        print(f"Debug: Exception in classify_and_slots: {str(e)}")
         # Fallback with basic heuristics
         return {
             "classification": "other",
