@@ -1,3 +1,26 @@
+"""
+Incident Response ChatOps - Phase 1 + Phase 2 (FULLY CONNECTED)
+================================================================
+
+This application provides:
+✅ AI-powered incident classification using OWASP Top 10:2025
+✅ Multi-hypothesis analysis with confidence scoring
+✅ User-level adaptation (novice/intermediate/expert)
+✅ Entity extraction (IPs, URLs, CVEs) + NVD enrichment
+✅ Phase-1 → Phase-2 handoff via structured JSON
+✅ Automated response playbook execution (Phase-2 engine)
+✅ Complete SOAR pipeline (Incident → Classification → Response)
+
+Phase-2 Integration:
+- Connected to friend's IR-SANDBOX playbook engine
+- 10 OWASP playbooks (A01-A10) covering all attack categories
+- Dry-run simulation mode for safe execution
+- Real-time response plan display with incident response phases
+
+Architecture:
+Phase 1 (This file) → JSON handoff → Phase 2 (phase2_engine/) → Automated Response
+"""
+
 import time, json, io, os
 from pathlib import Path
 import streamlit as st
@@ -5,6 +28,9 @@ from src.extractor import extract_entities, extract_IOCs, detect_symptoms
 from src.llm_adapter import classify_and_slots
 from src.nvd import fetch_cve, mitre_url
 from src.lc_retriever import build_inmemory_kb, format_retrieval_snippets
+
+# ✅ Phase 2 integration - FROM FRIEND'S IR-SANDBOX REPO (NOW FULLY CONNECTED)
+from phase2_engine.core.runner import run_phase2_from_incident
 
 # Load environment variables from .env file
 def load_env_file():
@@ -704,7 +730,7 @@ if user_text:
             if ents.cves:       sig.append(f"cve={', '.join(ents.cves[:2])}")
             signals = " · ".join(sig) if sig else "no indicators yet"
 
-            # 5) Chatty response (works both full/degenerate modes)
+            # 5) Chatty response (Phase-1 conversational answer)
             user_level = out.get("user_level", "novice") if out else "novice"
             candidates_list = out.get("candidates", []) if out else []
             msg = templated_reply(
@@ -718,37 +744,13 @@ if user_text:
                 user_level=user_level,
                 candidates=candidates_list
             )
+            # This is the "chat" part that appears in the conversation history
             st.markdown(msg)
-            
-            # Display enhanced Gemini features
-            if out:
-                # Show multiple candidates if available
-                candidates = out.get("candidates", [])
-                if len(candidates) > 1 and score < 0.85:
-                    st.markdown("### Alternative Scenarios")
-                    st.write("Also considered:")
-                    for cand in candidates[1:3]:  # Show top 2 alternatives
-                        cand_label = cand.get("label", "unknown")
-                        cand_score = cand.get("score", 0)
-                        if cand_score >= 0.3:
-                            st.write(f"- **{cand_label.replace('_', ' ').title()}**: {cand_score:.0%} confidence")
-                
-                # Show immediate actions for high confidence
-                immediate_actions = out.get("immediate_actions", [])
-                if immediate_actions and score >= THRESH_GO:
-                    st.markdown("### Immediate Actions")
-                    for idx, action in enumerate(immediate_actions[:4], 1):
-                        st.write(f"{idx}. {action}")
-                
-                # Show next questions for medium/low confidence
-                next_questions = out.get("next_questions", [])
-                if next_questions and score < THRESH_GO:
-                    st.markdown("### Additional Information Needed")
-                    st.write("To better assess this incident, please answer:")
-                    for idx, question in enumerate(next_questions[:3], 1):
-                        st.write(f"{idx}. {question}")
 
-            # 5) Phase-2 handoff JSON
+            # ---------- Visual divider between chat and summary ----------
+            st.markdown("---")
+
+            # 6) Phase-1 handoff JSON (always produced, but not always shown in full)
             report_category = REPORT_CATEGORY_MAP.get(label, "Other")
             st.session_state.phase1_output = {
                 "incident_type": report_category,
@@ -759,52 +761,110 @@ if user_text:
                 "iocs": iocs,
                 "related_CVEs": ents.cves,
                 "kb_excerpt": kb_context[:600],
-                "timestamp_ms": round((time.perf_counter()-t0)*1000,1)
+                "timestamp_ms": round((time.perf_counter() - t0) * 1000, 1),
             }
 
-            with st.expander("Advanced details (Phase-2 input)"):
-                st.json(st.session_state.phase1_output)
-                if ents.cves:
-                    st.markdown("**MITRE CVE Links:**")
-                    for c in ents.cves[:5]:
-                        st.markdown(f"- [{c}]({mitre_url(c)})")
+            # ---------- INCIDENT SUMMARY CARD (Phase-1) ----------
+            st.subheader("📌 Incident Summary (Phase-1)")
+            col1, col2 = st.columns(2)
 
-            # 6) Download and Phase 2 Response
-            # Show if confidence is high enough, regardless of mapped category
-            if st.session_state.phase1_output and score >= THRESH_GO:
-                st.markdown("---")
-                st.markdown("### Next Steps")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    import io
-                    buf = io.BytesIO(json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8"))
-                    st.download_button(
-                        "📄 Download Report",
-                        data=buf,
-                        file_name="incident_report.json",
-                        mime="application/json",
-                        help="Download incident classification report as JSON"
-                    )
-                
-                with col2:
-                    if st.button("▶️ View Response Plan", type="primary", help="See recommended response actions"):
-                        st.session_state.show_phase2 = True
-                
-                # Show Phase 2 results if button was clicked
-                if st.session_state.get("show_phase2", False):
-                    from phase2_engine.core.runner import run_phase2_from_incident
-                    
-                    with st.spinner("Loading response playbook..."):
+            with col1:
+                st.markdown(f"**Type:** {report_category}")
+                st.markdown(f"**Fine label:** `{label}`")
+                st.markdown(f"**Confidence:** {score:.2f}")
+            with col2:
+                # Simple severity suggestion based on confidence
+                if score >= 0.85:
+                    severity = "High"
+                elif score >= 0.6:
+                    severity = "Medium"
+                else:
+                    severity = "Low / Unclear"
+                st.markdown(f"**Suggested severity:** {severity}")
+                st.markdown(f"**User level:** {user_level.title()}")
+
+            # IOC summary row
+            sig_parts = []
+            if iocs.get("ip"):
+                sig_parts.append(f"IP(s): {', '.join(iocs['ip'][:3])}")
+            if iocs.get("url"):
+                sig_parts.append(f"URL(s): {', '.join(iocs['url'][:3])}")
+            if ents.cves:
+                sig_parts.append(f"CVE(s): {', '.join(ents.cves[:3])}")
+            if sig_parts:
+                st.markdown("**Key indicators:** " + " · ".join(sig_parts))
+            else:
+                st.markdown("**Key indicators:** (none extracted yet)")
+
+            # ---------- IMMEDIATE ACTIONS (Phase-1 suggestions) ----------
+            st.subheader("🛠️ Immediate Actions (Phase-1 suggestions)")
+
+            immediate_actions_list = []
+            if report_category == "Injection Attack":
+                immediate_actions_list = [
+                    "Temporarily reduce exposure of the affected page or form if possible (disable or restrict access).",
+                    "Capture any suspicious input or payload you saw – save screenshots or copy the exact text.",
+                    "Notify your security or development team immediately to review logs around the time of the incident.",
+                    "Do not attempt to 'fix' the input handling manually in production until a proper patch is prepared.",
+                ]
+            elif report_category == "Broken Access Control":
+                immediate_actions_list = [
+                    "Confirm which roles/accounts can currently access the sensitive function or endpoint.",
+                    "Temporarily restrict or disable access to the affected feature for normal users.",
+                    "Review recent access logs for unusual or unauthorized use of the feature.",
+                    "Work with developers to verify that authorization checks are correctly enforced.",
+                ]
+            elif report_category in ["Denial of Service", "Authentication Failure"]:
+                immediate_actions_list = [
+                    "Check for abnormal login attempts (e.g., many failures from the same IP or account).",
+                    "Consider temporarily locking targeted accounts if you suspect brute-force or credential stuffing.",
+                    "Confirm that MFA and password policies are correctly enforced for sensitive accounts.",
+                ]
+            elif report_category == "Misconfiguration":
+                immediate_actions_list = [
+                    "Check whether there were any recent deployments, configuration changes, or database migrations.",
+                    "Coordinate with the responsible admin/developer to review config files, environment variables, and scripts.",
+                    "Avoid making ad-hoc manual changes in production until the root cause is understood.",
+                    "If data or tables are missing, verify backups and restoration procedures before restoring anything.",
+                ]
+            else:
+                # Generic safe triage if category is unclear
+                immediate_actions_list = [
+                    "Write down what you were doing just before the issue occurred (page, action, time).",
+                    "Capture any visible error messages or screenshots.",
+                    "Notify your IT/security team that something suspicious or unexpected happened.",
+                    "Avoid making major changes until someone has reviewed the situation.",
+                ]
+
+            for idx, action in enumerate(immediate_actions_list, start=1):
+                st.markdown(f"{idx}. {action}")
+
+            # ---------- PHASE-2 TRIGGER (Response Plan) ----------
+            st.markdown("---")
+            st.subheader("🚀 Next Steps - Phase-2 Response Automation")
+
+            st.markdown(
+                "✅ **Phase-1 analysis complete.** You can now trigger the automated response playbook engine."
+            )
+
+            # Phase-2 button
+            run_phase2 = st.button("▶ View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
+            if run_phase2:
+                st.session_state.show_phase2 = True
+            
+            # Show Phase 2 results if button was clicked
+            if st.session_state.get("show_phase2", False):
+                with st.spinner("🔄 Loading response playbook from Phase-2 engine..."):
+                    try:
                         phase2_result = run_phase2_from_incident(
                             st.session_state.phase1_output,
                             dry_run=True  # Safe simulation mode
                         )
                         
                         if phase2_result["status"] == "success":
+                            st.success("✅ Phase-2 executed successfully")
                             st.markdown("---")
-                            st.markdown("### 📋 Recommended Response Actions")
+                            st.markdown("### 📋 Recommended Response Actions (Phase-2)")
                             st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
                             
                             # Group steps by phase
@@ -849,7 +909,31 @@ if user_text:
                                 st.session_state.show_phase2 = False
                                 st.rerun()
                         else:
-                            st.warning(f"⚠️ {phase2_result['message']}")
+                            st.warning(f"⚠️ Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
                             st.session_state.show_phase2 = False
+                    
+                    except Exception as e:
+                        st.error(f"❌ Phase-2 execution failed: {str(e)}")
+                        st.session_state.show_phase2 = False
+
+            # ---------- ADVANCED DETAILS (JSON + links) ----------
+            with st.expander("🔧 Advanced details (Phase-2 input JSON)"):
+                st.json(st.session_state.phase1_output)
+                if ents.cves:
+                    st.markdown("**MITRE CVE Links:**")
+                    for c in ents.cves[:5]:
+                        st.markdown(f"- [{c}]({mitre_url(c)})")
+
+                # Download button lives inside the advanced section
+                import io
+                buf = io.BytesIO(
+                    json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8")
+                )
+                st.download_button(
+                    "Download Phase-1 Output (JSON)",
+                    data=buf,
+                    file_name="phase1_output.json",
+                    mime="application/json",
+                )
 
     st.session_state.history.append({"role":"assistant","content":msg})
