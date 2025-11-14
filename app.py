@@ -334,12 +334,12 @@ if user_text:
                     for c in ents.cves[:5]:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
-            # 6) download JSON
-            if st.session_state.phase1_output:
+            # 6) download JSON - only when confidence is high enough and not "other"
+            if st.session_state.phase1_output and score >= THRESH_GO and label != "other":
                 import io
                 buf = io.BytesIO(json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8"))
                 st.download_button(
-                    "Download Phase-1 Output (JSON)",
+                    "📥 Download Phase-1 Output (JSON)",
                     data=buf,
                     file_name="phase1_output.json",
                     mime="application/json"
