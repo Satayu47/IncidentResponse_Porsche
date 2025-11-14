@@ -103,19 +103,23 @@ class Phase2Runner:
         # Extract playbook info
         playbook_name = playbook.get("name", "Unknown")
         description = playbook.get("description", "")
-        steps = playbook.get("steps", [])
+        nodes = playbook.get("nodes", [])  # YAML uses "nodes" not "steps"
         
         # Execute steps (simulated for dry_run)
         executed_steps = []
-        for idx, step in enumerate(steps, 1):
-            step_name = step.get("name", f"Step {idx}")
-            action = step.get("action", "unknown")
+        for idx, node in enumerate(nodes, 1):
+            step_name = node.get("description", f"Step {idx}")
+            ui_desc = node.get("ui_description", "")
+            action = node.get("type", "unknown")
+            phase = node.get("phase", "unknown")
             
             if dry_run:
                 executed_steps.append({
                     "step": idx,
                     "name": step_name,
+                    "ui_description": ui_desc,
                     "action": action,
+                    "phase": phase,
                     "status": "simulated",
                     "message": f"Would execute: {action}"
                 })
@@ -124,7 +128,9 @@ class Phase2Runner:
                 executed_steps.append({
                     "step": idx,
                     "name": step_name,
+                    "ui_description": ui_desc,
                     "action": action,
+                    "phase": phase,
                     "status": "pending",
                     "message": "Real execution not yet implemented"
                 })

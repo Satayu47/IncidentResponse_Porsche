@@ -762,44 +762,86 @@ if user_text:
                     for c in ents.cves[:5]:
                         st.markdown(f"- [{c}]({mitre_url(c)})")
 
-            # 6) Phase 2 - Automated Response (only for high confidence)
+            # 6) Download and Phase 2 Response
             if st.session_state.phase1_output and score >= THRESH_GO and label != "other":
                 st.markdown("---")
+                st.markdown("### Next Steps")
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     import io
                     buf = io.BytesIO(json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8"))
                     st.download_button(
-                        "Download Report (JSON)",
+                        "📄 Download Report",
                         data=buf,
                         file_name="incident_report.json",
-                        mime="application/json"
+                        mime="application/json",
+                        help="Download incident classification report as JSON"
                     )
                 
                 with col2:
-                    if st.button("🚀 Run Phase 2 - Automated Response", type="primary"):
-                        from phase2_engine.core.runner import run_phase2_from_incident
+                    if st.button("▶️ View Response Plan", type="primary", help="See recommended response actions"):
+                        st.session_state.show_phase2 = True
+                
+                # Show Phase 2 results if button was clicked
+                if st.session_state.get("show_phase2", False):
+                    from phase2_engine.core.runner import run_phase2_from_incident
+                    
+                    with st.spinner("Loading response playbook..."):
+                        phase2_result = run_phase2_from_incident(
+                            st.session_state.phase1_output,
+                            dry_run=True  # Safe simulation mode
+                        )
                         
-                        with st.spinner("Executing automated response playbook..."):
-                            phase2_result = run_phase2_from_incident(
-                                st.session_state.phase1_output,
-                                dry_run=True  # Safe simulation mode
-                            )
+                        if phase2_result["status"] == "success":
+                            st.markdown("---")
+                            st.markdown("### 📋 Recommended Response Actions")
+                            st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
                             
-                            if phase2_result["status"] == "success":
-                                st.success(f"✅ Playbook Executed: {phase2_result['playbook']}")
-                                st.write(f"**Description:** {phase2_result['description']}")
-                                st.write(f"**Steps Completed:** {phase2_result['steps_executed']}")
-                                
-                                with st.expander("View Execution Details"):
-                                    for step in phase2_result["steps"]:
-                                        st.write(f"**{step['step']}. {step['name']}**")
-                                        st.write(f"   Action: `{step['action']}`")
-                                        st.write(f"   Status: {step['status']}")
-                                        st.write(f"   {step['message']}")
-                                        st.write("")
-                            else:
-                                st.warning(f"⚠️ {phase2_result['message']}")
+                            # Group steps by phase
+                            steps_by_phase = {}
+                            for step in phase2_result["steps"]:
+                                phase = step.get("phase", "unknown")
+                                if phase not in steps_by_phase:
+                                    steps_by_phase[phase] = []
+                                steps_by_phase[phase].append(step)
+                            
+                            # Phase order and friendly names
+                            phase_names = {
+                                "preparation": "🔧 Preparation",
+                                "detection_analysis": "🔍 Detection & Analysis",
+                                "containment": "🛡️ Containment",
+                                "eradication": "⚔️ Eradication",
+                                "recovery": "🔄 Recovery",
+                                "post_incident": "📊 Post-Incident"
+                            }
+                            
+                            # Display steps grouped by phase
+                            for phase_key in ["preparation", "detection_analysis", "containment", "eradication", "recovery", "post_incident"]:
+                                if phase_key in steps_by_phase:
+                                    phase_steps = steps_by_phase[phase_key]
+                                    st.markdown(f"#### {phase_names.get(phase_key, phase_key.title())}")
+                                    
+                                    for step in phase_steps:
+                                        with st.container():
+                                            col_num, col_info = st.columns([1, 11])
+                                            with col_num:
+                                                st.markdown(f"**{step['step']}**")
+                                            with col_info:
+                                                st.markdown(f"**{step['name']}**")
+                                                if step.get('ui_description'):
+                                                    st.caption(step['ui_description'])
+                                                else:
+                                                    st.caption(step['message'])
+                                    st.markdown("")
+                            
+                            # Reset button
+                            if st.button("✕ Close Response Plan"):
+                                st.session_state.show_phase2 = False
+                                st.rerun()
+                        else:
+                            st.warning(f"⚠️ {phase2_result['message']}")
+                            st.session_state.show_phase2 = False
 
     st.session_state.history.append({"role":"assistant","content":msg})
