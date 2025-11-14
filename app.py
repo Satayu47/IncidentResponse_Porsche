@@ -766,7 +766,7 @@ if user_text:
 
             # ---------------- INCIDENT SUMMARY CARD (Phase-1) ----------------
             with st.container():
-                st.markdown("## 📌 Incident Summary (Phase-1)")
+                st.markdown("## Incident Summary (Phase-1)")
                 col1, col2 = st.columns(2)
 
                 with col1:
@@ -804,7 +804,7 @@ if user_text:
 
             # ---------------- IMMEDIATE ACTIONS (Phase-1) ----------------
             st.markdown("---")
-            st.markdown("## 🛠 Immediate Actions (Phase-1)")
+            st.markdown("## Immediate Actions (Phase-1)")
             st.info("These are safe, beginner-friendly steps based on the classification.")
 
             immediate_actions_list = []
@@ -849,11 +849,11 @@ if user_text:
 
             # ---------------- PHASE-2 BUTTON ----------------
             st.markdown("---")
-            st.markdown("## 🚀 Phase-2 Response Automation")
+            st.markdown("## Phase-2 Response Automation")
             st.markdown("Phase-1 analysis complete. Run the automated playbook engine for structured response steps.")
 
             # Phase-2 button
-            run_phase2 = st.button("▶ View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
+            run_phase2 = st.button("View Response Plan (Phase-2)", type="primary", key="phase2_trigger")
             if run_phase2:
                 st.session_state.show_phase2 = True
             
@@ -867,9 +867,9 @@ if user_text:
                         )
                         
                         if phase2_result["status"] == "success":
-                            st.success("✅ Phase-2 executed successfully")
+                            st.success("Phase-2 executed successfully")
                             st.markdown("---")
-                            st.markdown("### 📋 Recommended Response Actions (Phase-2)")
+                            st.markdown("### Recommended Response Actions (Phase-2)")
                             st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
                             
                             # Group steps by phase
@@ -882,12 +882,12 @@ if user_text:
                             
                             # Phase order and friendly names
                             phase_names = {
-                                "preparation": "🔧 Preparation",
-                                "detection_analysis": "🔍 Detection & Analysis",
-                                "containment": "🛡️ Containment",
-                                "eradication": "⚔️ Eradication",
-                                "recovery": "🔄 Recovery",
-                                "post_incident": "📊 Post-Incident"
+                                "preparation": "Preparation",
+                                "detection_analysis": "Detection & Analysis",
+                                "containment": "Containment",
+                                "eradication": "Eradication",
+                                "recovery": "Recovery",
+                                "post_incident": "Post-Incident"
                             }
                             
                             # Display steps grouped by phase
@@ -910,20 +910,20 @@ if user_text:
                                     st.markdown("")
                             
                             # Reset button
-                            if st.button("✕ Close Response Plan"):
+                            if st.button("Close Response Plan"):
                                 st.session_state.show_phase2 = False
                                 st.rerun()
                         else:
-                            st.warning(f"⚠️ Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
+                            st.warning(f"Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
                             st.session_state.show_phase2 = False
                     
                     except Exception as e:
-                        st.error(f"❌ Phase-2 execution failed: {str(e)}")
+                        st.error(f"Phase-2 execution failed: {str(e)}")
                         st.session_state.show_phase2 = False
 
             # ---------------- ADVANCED JSON (Phase-1 → Phase-2 Input) ----------------
             st.markdown("---")
-            with st.expander("🔧 Phase-1 JSON (Input to Phase-2) — Advanced"):
+            with st.expander("Advanced: Phase-1 JSON (Input to Phase-2)"):
                 st.json(st.session_state.phase1_output)
                 
                 if ents.cves:
@@ -936,7 +936,7 @@ if user_text:
                     json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8")
                 )
                 st.download_button(
-                    "📥 Download Phase-1 Output (JSON)",
+                    "Download Phase-1 Output (JSON)",
                     data=buf,
                     file_name="phase1_output.json",
                     mime="application/json",
