@@ -24,6 +24,297 @@ load_env_file()
 THRESH_LOW = float(os.getenv("THRESH_LOW", 0.6))  # ask one clarification
 THRESH_GO  = float(os.getenv("THRESH_GO", 0.7))   # ready to hand off
 
+def answer_general_security_question(user_text: str) -> str | None:
+    """
+    Handle general security questions directly without running incident classification.
+    Returns a best-practice answer for prevention/explanation questions, or None.
+    """
+    text_lower = user_text.lower()
+    
+    # Detect general "how to prevent" or "what is" questions
+    prevention_keywords = ["how to prevent", "how can i prevent", "how do i prevent", 
+                          "prevent", "protection", "how to protect", "how to secure"]
+    what_is_keywords = ["what is", "what are", "explain", "tell me about"]
+    
+    is_prevention = any(kw in text_lower for kw in prevention_keywords)
+    is_what_is = any(kw in text_lower for kw in what_is_keywords)
+    
+    if not (is_prevention or is_what_is):
+        return None
+    
+    # Brute force / authentication attacks
+    if "brute" in text_lower or "brute force" in text_lower or "bruteforce" in text_lower:
+        return """## 🛡️ Preventing Brute Force Attacks
+
+**Best Practices:**
+
+1. **Account Lockout Policy**
+   - Lock account after 5-10 failed login attempts
+   - Temporary lockout (15-30 minutes) or require admin unlock
+
+2. **Rate Limiting**
+   - Limit login attempts per IP address
+   - Use CAPTCHA after 3 failed attempts
+
+3. **Multi-Factor Authentication (MFA)**
+   - Require second authentication factor
+   - Google Authenticator, SMS codes, hardware tokens
+
+4. **Strong Password Policy**
+   - Minimum 12+ characters
+   - Require mix of uppercase, lowercase, numbers, symbols
+   - Check against common password lists
+
+5. **Monitoring & Alerts**
+   - Log all failed login attempts with IP addresses
+   - Alert security team on suspicious patterns
+   - Monitor for distributed attacks from multiple IPs
+
+6. **Delay Responses**
+   - Add progressive delays after failed attempts
+   - Makes automated attacks impractical
+
+**Example (Python/Flask):**
+```python
+from flask_limiter import Limiter
+
+limiter = Limiter(app, key_func=lambda: request.remote_addr)
+
+@app.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Rate limit: 5 attempts/minute
+def login():
+    # Login logic here
+    pass
+```"""
+    
+    # DDoS prevention
+    if "ddos" in text_lower or "dos" in text_lower or "denial of service" in text_lower:
+        return """## 🛡️ Preventing DDoS (Denial of Service) Attacks
+
+**Best Practices:**
+
+1. **Use CDN & DDoS Protection Services**
+   - Cloudflare, AWS Shield, Akamai
+   - Absorb traffic spikes and filter malicious requests
+
+2. **Rate Limiting**
+   - Limit requests per IP/user
+   - Implement at application and network layers
+
+3. **Network Architecture**
+   - Load balancers to distribute traffic
+   - Auto-scaling to handle legitimate traffic spikes
+   - Anycast network routing
+
+4. **Firewall Rules**
+   - Block suspicious traffic patterns
+   - Geo-blocking if appropriate
+   - IP blacklisting for known attackers
+
+5. **Monitoring & Alerting**
+   - Real-time traffic monitoring
+   - Anomaly detection for unusual patterns
+   - Automatic traffic rerouting
+
+6. **Infrastructure Redundancy**
+   - Multiple servers across different locations
+   - Failover capabilities"""
+    
+    # SQL Injection prevention
+    if "sql injection" in text_lower or "sqli" in text_lower:
+        return """## 🛡️ Preventing SQL Injection
+
+**Best Practices:**
+
+1. **Use Parameterized Queries (Prepared Statements)**
+   - Never concatenate user input directly into SQL queries
+   - Use placeholders: `SELECT * FROM users WHERE id = ?`
+
+2. **Input Validation**
+   - Whitelist allowed characters
+   - Validate data types (numbers should be numbers)
+   - Limit input length
+
+3. **Least Privilege**
+   - Database users should have minimal necessary permissions
+   - Never use admin accounts for application queries
+
+4. **Use ORM Frameworks**
+   - Frameworks like SQLAlchemy, Hibernate, Entity Framework handle escaping
+
+5. **Web Application Firewall (WAF)**
+   - Can block common SQL injection patterns
+
+**Example (Python):**
+```python
+# ❌ BAD - Vulnerable
+query = f"SELECT * FROM users WHERE name = '{user_input}'"
+
+# ✅ GOOD - Safe
+query = "SELECT * FROM users WHERE name = ?"
+cursor.execute(query, (user_input,))
+```"""
+
+    # XSS prevention
+    elif "xss" in text_lower or "cross-site scripting" in text_lower or "cross site scripting" in text_lower:
+        return """## 🛡️ Preventing Cross-Site Scripting (XSS)
+
+**Best Practices:**
+
+1. **Output Encoding**
+   - Encode all user data before displaying in HTML
+   - Use proper encoding for context (HTML, JavaScript, URL)
+
+2. **Content Security Policy (CSP)**
+   - HTTP header that restricts where scripts can load from
+   - `Content-Security-Policy: default-src 'self'`
+
+3. **Input Validation**
+   - Reject inputs with `<script>`, `javascript:`, `on*=` patterns
+   - Whitelist safe characters
+
+4. **Use Security Libraries**
+   - DOMPurify for JavaScript
+   - Bleach for Python
+   - OWASP Java Encoder
+
+5. **HTTPOnly Cookies**
+   - Prevents JavaScript from accessing session cookies
+
+**Example:**
+```javascript
+// ❌ BAD - Vulnerable
+div.innerHTML = userInput;
+
+// ✅ GOOD - Safe
+div.textContent = userInput;
+```"""
+
+    # Phishing prevention
+    elif "phishing" in text_lower:
+        return """## 🛡️ Preventing Phishing Attacks
+
+**For Users:**
+
+1. **Check Email Sender**
+   - Verify sender email address carefully
+   - Look for typos or strange domains
+
+2. **Hover Before Clicking**
+   - Hover over links to see real URL
+   - Look for suspicious domains
+
+3. **Never Share Credentials**
+   - Legitimate companies won't ask for passwords via email
+   - Go directly to website, don't click email links
+
+4. **Enable MFA**
+   - Multi-Factor Authentication protects even if password is stolen
+
+5. **Report Suspicious Emails**
+   - Forward to IT/security team
+
+**For Organizations:**
+
+1. **Email Authentication** (SPF, DKIM, DMARC)
+2. **Security Awareness Training**
+3. **Email Filtering** and anti-phishing tools
+4. **Regular Phishing Simulations**
+5. **Report Button** in email clients"""
+
+    # Malware prevention
+    elif "malware" in text_lower or "virus" in text_lower:
+        return """## 🛡️ Preventing Malware Infections
+
+**Best Practices:**
+
+1. **Keep Software Updated**
+   - Enable automatic updates for OS and applications
+   - Patch vulnerabilities promptly
+
+2. **Use Antivirus/EDR**
+   - Keep antivirus software updated
+   - Enterprise: Use Endpoint Detection & Response (EDR)
+
+3. **Email Security**
+   - Don't open attachments from unknown senders
+   - Be suspicious of .exe, .zip, .scr files
+
+4. **Download Safety**
+   - Only download from official sources
+   - Verify checksums for important files
+
+5. **Network Security**
+   - Use firewall
+   - Segment networks
+   - Monitor outbound connections
+
+6. **Backup Regularly**
+   - Offline backups protect against ransomware
+   - Test restore procedures"""
+
+    # DDoS prevention
+    elif "ddos" in text_lower or "dos attack" in text_lower or "denial of service" in text_lower:
+        return """## 🛡️ Preventing DDoS Attacks
+
+**Best Practices:**
+
+1. **Use CDN/DDoS Protection**
+   - Cloudflare, Akamai, AWS Shield
+   - Absorb and filter malicious traffic
+
+2. **Rate Limiting**
+   - Limit requests per IP address
+   - Throttle suspicious traffic
+
+3. **Network Architecture**
+   - Distribute servers geographically
+   - Use load balancers
+   - Overprovision bandwidth
+
+4. **Monitoring & Alerts**
+   - Detect traffic anomalies early
+   - Automated response playbooks
+
+5. **Blackhole Routing**
+   - Drop traffic from attacking IPs
+   - Use BGP blackholing for large attacks"""
+
+    # Authentication best practices
+    elif "authentication" in text_lower or "password" in text_lower or "login" in text_lower:
+        return """## 🛡️ Authentication Security Best Practices
+
+**Best Practices:**
+
+1. **Multi-Factor Authentication (MFA)**
+   - Require 2FA/MFA for all accounts
+   - Use authenticator apps, not SMS when possible
+
+2. **Strong Password Policy**
+   - Minimum 12+ characters
+   - Complexity requirements
+   - Password managers encouraged
+
+3. **Account Lockout**
+   - Lock after 5-10 failed attempts
+   - Implement CAPTCHA
+
+4. **Session Management**
+   - Secure, HTTPOnly, SameSite cookies
+   - Session timeout after inactivity
+   - Regenerate session ID after login
+
+5. **Password Storage**
+   - Use bcrypt, Argon2, or scrypt
+   - Never store plaintext passwords
+   - Salt all passwords
+
+6. **Monitoring**
+   - Log failed login attempts
+   - Alert on suspicious patterns (brute force)"""
+
+    return None  # Not a general security question
+
 REPORT_CATEGORY_MAP = {
     "sql_injection": "Injection Attack",
     "xss": "Injection Attack",
@@ -67,7 +358,25 @@ if "asked_slots" not in st.session_state:
 if "last_input_cache" not in st.session_state:
     st.session_state.last_input_cache = {}
 
-def templated_reply(user_text: str, label: str, score: float, iocs: dict, rationale: str, kb_present: bool, followup: str|None):
+def templated_reply(user_text: str, label: str, score: float, iocs: dict, rationale: str, kb_present: bool, followup: str|None, user_level: str = "novice"):
+    """
+    Adapt tone and level of detail based on user_level.
+    
+    user_level can be:
+      - "novice": user is non-technical, confused, no logs/payloads.
+      - "intermediate": some technical terms, but not deep.
+      - "expert": provides payloads, logs, CVEs, knows tools.
+    
+    Behavior:
+    - For "novice":
+        * Use friendly, reassuring language.
+        * Explain things in simple terms.
+        * Longer explanations are OK.
+    - For "intermediate":
+        * Balanced: clear but not too verbose.
+    - For "expert":
+        * Short, direct, technical.
+    """
     sig = []
     if iocs.get("ip"):  sig.append(f"ip={', '.join(iocs['ip'][:2])}")
     if iocs.get("url"): sig.append(f"url={', '.join(iocs['url'][:1])}")
@@ -77,53 +386,177 @@ def templated_reply(user_text: str, label: str, score: float, iocs: dict, ration
     # Natural response variations
     import random
     
-    # Different responses based on confidence
+    # Different responses based on confidence AND user level
     if score >= 0.8:
-        # High confidence responses
-        openings = [
-            "Alright, got a clear read on this.",
-            "Right, this looks straightforward.", 
-            "Okay, pretty clear what we're dealing with here.",
-            "Got it. Analysis came back definitive."
-        ]
-        classification_intros = [
-            "This is definitely",
-            "Clear case of", 
-            "We're looking at",
-            "Identified as"
-        ]
+        # High confidence responses - adapt by user_level
+        if user_level == "expert":
+            openings = [
+                "Clear classification.",
+                "Definitive read.",
+                "High confidence assessment.",
+                "Analysis complete."
+            ]
+            classification_intros = [
+                "Classified as",
+                "Identified:",
+                "Category:",
+                "Type:"
+            ]
+        elif user_level == "intermediate":
+            openings = [
+                "Got a clear read on this.",
+                "Analysis shows high confidence.",
+                "Pretty straightforward case.",
+                "Clear classification here."
+            ]
+            classification_intros = [
+                "This is",
+                "Identified as",
+                "We're looking at",
+                "Classification:"
+            ]
+        else:  # novice
+            openings = [
+                "Alright, I've analyzed your report and I'm quite confident about what's happening here.",
+                "Good news - I have a clear understanding of this incident.",
+                "Okay, I've looked at everything you described and I'm pretty sure I know what this is.",
+                "Got it. After reviewing the details, I can tell you what's going on."
+            ]
+            classification_intros = [
+                "This is definitely",
+                "I'm confident this is",
+                "What you're dealing with is",
+                "This appears to be"
+            ]
         confidence_phrase = "high confidence"
         
     elif score >= 0.6:
-        # Medium confidence responses  
-        openings = [
-            "Alright, I've looked at this incident.",
-            "Okay, processed what you described.",
-            "Got it. Here's my assessment.",
-            "Right, analyzed the details."
-        ]
-        classification_intros = [
-            "This appears to be",
-            "Looking like", 
-            "Seems we're dealing with",
-            "Assessment shows"
-        ]
+        # Medium confidence responses - adapt by user_level
+        if user_level == "expert":
+            openings = [
+                "Likely scenario identified.",
+                "Working hypothesis:",
+                "Probable classification.",
+                "Best match based on indicators."
+            ]
+            classification_intros = [
+                "Probably",
+                "Likely",
+                "Appears to be",
+                "Most consistent with"
+            ]
+        elif user_level == "intermediate":
+            openings = [
+                "I have a working theory here.",
+                "Based on the evidence, likely scenario is:",
+                "Pretty good read, though want to confirm a few things.",
+                "Got a probable classification."
+            ]
+            classification_intros = [
+                "This is probably",
+                "Most likely",
+                "Looks like",
+                "Appears to be"
+            ]
+        else:  # novice
+            openings = [
+                "Okay, I have a pretty good idea of what this is, but I'd like to confirm a few things first.",
+                "I think I know what's happening here, but let me ask a couple questions to be sure.",
+                "Got a good lead on this, but want to double-check some details.",
+                "I have a working theory - just need to verify a few points."
+            ]
+            classification_intros = [
+                "I believe this is",
+                "This is probably",
+                "My assessment is that this is",
+                "Most likely we're dealing with"
+            ]
+        confidence_phrase = "medium confidence"
+        
+    elif score >= 0.5:
+        # Fair confidence responses - adapt by user_level
+        if user_level == "expert":
+            openings = [
+                "Tentative classification.",
+                "Preliminary assessment.",
+                "Initial read (low confidence).",
+                "Working theory, needs validation."
+            ]
+            classification_intros = [
+                "Possibly",
+                "May be",
+                "Could be",
+                "Tentatively"
+            ]
+        elif user_level == "intermediate":
+            openings = [
+                "Got a tentative read on this.",
+                "Here's my preliminary assessment.",
+                "I have an idea, but low confidence.",
+                "Initial analysis suggests this, though uncertain."
+            ]
+            classification_intros = [
+                "This may be",
+                "Could be looking at",
+                "Possibly",
+                "Tentatively classified as"
+            ]
+        else:  # novice
+            openings = [
+                "I'm not entirely sure about this one yet, but here's my best guess.",
+                "This is a bit tricky to pin down, but I have a theory.",
+                "I need more information to be confident, but here's what I'm thinking.",
+                "Got it. Here's my assessment, though I'm not fully certain."
+            ]
+            classification_intros = [
+                "This appears to be",
+                "Looking like", 
+                "Seems we're dealing with",
+                "My initial assessment shows"
+            ]
         confidence_phrase = "fairly confident"
         
     else:
-        # Low confidence responses
-        openings = [
-            "Hmm, taking a look at this.",
-            "Okay, trying to piece this together.",
-            "Right, let me work through this.",
-            "Got it, though need a bit more to go on."
-        ]
-        classification_intros = [
-            "Best guess is",
-            "Might be looking at",
-            "Could be dealing with",
-            "Initial assessment suggests"
-        ]
+        # Low confidence responses - adapt by user_level
+        if user_level == "expert":
+            openings = [
+                "Insufficient data.",
+                "Classification unclear.",
+                "Low confidence read.",
+                "Need more context."
+            ]
+            classification_intros = [
+                "Unclear -",
+                "Uncertain -",
+                "Cannot classify:",
+                "Ambiguous:"
+            ]
+        elif user_level == "intermediate":
+            openings = [
+                "Having trouble classifying this one.",
+                "Not enough to work with here.",
+                "This one's unclear to me.",
+                "Need more details to classify this properly."
+            ]
+            classification_intros = [
+                "Best guess is",
+                "Might be looking at",
+                "Could be",
+                "Initial assessment suggests"
+            ]
+        else:  # novice
+            openings = [
+                "I'm having a hard time understanding what's going on here. Let me ask you some questions to get more clarity.",
+                "This one's a bit unclear to me - I need more information to help you properly.",
+                "Hmm, I'm not quite sure what we're dealing with yet. Can you provide more details?",
+                "I'm struggling to classify this one - let's work together to figure it out."
+            ]
+            classification_intros = [
+                "My best guess is",
+                "I think this might be",
+                "This could be",
+                "Initial assessment suggests"
+            ]
         confidence_phrase = "not entirely sure yet"
     
     parts = []
@@ -149,27 +582,51 @@ def templated_reply(user_text: str, label: str, score: float, iocs: dict, ration
         if "can you be more specific" in followup.lower() or "what type of" in followup.lower():
             parts.append(f"**Need help:** {followup}")
         else:
-            followup_intros = [
-                "Quick question -",
-                "One thing -", 
-                "Need to know -",
-                "Just checking -"
-            ]
+            if user_level == "expert":
+                followup_intros = ["Q:", "Clarify:", "Need:", "Confirm:"]
+            elif user_level == "intermediate":
+                followup_intros = ["Quick question -", "One thing -", "Need to know -", "Just checking -"]
+            else:  # novice
+                followup_intros = [
+                    "I need to ask you something -",
+                    "Can you help me understand -",
+                    "One quick question -",
+                    "I'd like to know -"
+                ]
             parts.append(f"**{random.choice(followup_intros)}** {followup}")
     else:
         if score >= 0.7:
-            endings = [
-                "Should be good to escalate this.",
-                "Ready to pass this along.",
-                "Think we've got enough to move forward.",
-                "Confident enough to proceed."
-            ]
+            if user_level == "expert":
+                endings = ["Ready for escalation.", "Actionable.", "Proceed with response.", "Clear to escalate."]
+            elif user_level == "intermediate":
+                endings = [
+                    "Should be good to escalate this.",
+                    "Ready to pass this along.",
+                    "Think we've got enough to move forward.",
+                    "Confident enough to proceed."
+                ]
+            else:  # novice
+                endings = [
+                    "This looks clear enough that we can take action on it.",
+                    "I'm confident enough in this assessment that you can proceed with the response steps.",
+                    "We have a good understanding here - ready to move forward.",
+                    "This is solid - you're good to escalate this to your security team."
+                ]
         else:
-            endings = [
-                "That's what I can determine so far.",
-                "Best assessment with current info.",
-                "Working with what we have here."
-            ]
+            if user_level == "expert":
+                endings = ["Current assessment.", "Working with available data.", "Need more context."]
+            elif user_level == "intermediate":
+                endings = [
+                    "That's what I can determine so far.",
+                    "Best assessment with current info.",
+                    "Working with what we have here."
+                ]
+            else:  # novice
+                endings = [
+                    "This is the best I can figure out with what you've told me so far.",
+                    "That's my assessment based on the information I have right now.",
+                    "This is what I'm seeing, but I might need more details to be more certain."
+                ]
         parts.append(f"**Status:** {random.choice(endings)}")
             
     return "\n\n".join(parts)
@@ -187,6 +644,13 @@ if user_text:
     with st.chat_message("assistant"):
         with st.spinner("Analyzing…"):
             t0 = time.perf_counter()
+
+            # 0) Check if this is a general security question (bypass incident pipeline)
+            general_answer = answer_general_security_question(user_text)
+            if general_answer:
+                st.markdown(general_answer)
+                st.session_state.history.append({"role":"assistant","content":general_answer})
+                st.stop()  # Don't proceed to incident classification
 
             # 1) Extraction
             ents = extract_entities(user_text)
@@ -309,6 +773,7 @@ if user_text:
             signals = " · ".join(sig) if sig else "no indicators yet"
 
             # 5) Chatty response (works both full/degenerate modes)
+            user_level = out.get("user_level", "novice") if out else "novice"
             msg = templated_reply(
                 user_text=user_text,
                 label=label,
@@ -316,7 +781,8 @@ if user_text:
                 iocs=iocs,
                 rationale=rationale,
                 kb_present=bool(kb_context),
-                followup=followup if (followup and score < THRESH_GO) else None
+                followup=followup if (followup and score < THRESH_GO) else None,
+                user_level=user_level
             )
             st.markdown(msg)
             
