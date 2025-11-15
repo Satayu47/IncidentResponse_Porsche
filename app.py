@@ -395,36 +395,19 @@ REPORT_CATEGORY_MAP = {
 }
 
 st.set_page_config(
-    page_title="Security Incident Response Assistant", 
+    page_title="Incident Response Assistant", 
     layout="wide", 
-    page_icon="🛡️",
-    initial_sidebar_state="collapsed"
+    page_icon="🛡️"
 )
 
-# Professional header with trust indicators
-st.markdown("""
-<div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 2rem; border-radius: 10px; margin-bottom: 1.5rem;'>
-    <h1 style='color: white; margin: 0; font-size: 2.2rem;'>🛡️ Security Incident Response Assistant</h1>
-    <p style='color: #e0e7ff; margin: 0.5rem 0 0 0; font-size: 1rem;'>Trusted by SOC teams • OWASP Top 10:2025 Certified • Real-time Analysis</p>
-</div>
-""", unsafe_allow_html=True)
-
-# System status indicator
-st.markdown("""
-<div style='display: flex; align-items: center; gap: 1rem; padding: 0.8rem; background: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 5px; margin-bottom: 1rem;'>
-    <span style='font-size: 1.2rem;'>🟢</span>
-    <div>
-        <strong style='color: #15803d;'>System Online</strong>
-        <span style='color: #166534; font-size: 0.9rem; margin-left: 1rem;'>AI Classification Ready • Phase-2 Automation Active</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+st.title("🛡️ Incident Response Assistant")
+st.caption("OWASP Top 10:2025 Classification • Phase-1 & Phase-2 Integration")
 
 if "history" not in st.session_state:
     greetings = [
-        "👋 **Welcome to the Security Incident Response Assistant.**\n\nI'm here to help you analyze and respond to security incidents quickly and accurately. Just describe what's happening, and I'll guide you through the process.\n\n**What brings you here today?**",
-        "👋 **Hello! I'm your Security Incident Response Assistant.**\n\nWhether you're dealing with suspicious activity, potential attacks, or security concerns, I'm here to help classify and respond effectively.\n\n**Tell me what's happening.**",
-        "👋 **Welcome! Let's resolve this security incident together.**\n\nI use OWASP Top 10:2025 standards and automated playbooks to provide accurate incident classification and response guidance.\n\n**Describe the incident you're facing.**"
+        "Hi! Describe the security incident you're investigating.",
+        "Hello. What incident are you looking into?",
+        "What security issue can I help you classify?"
     ]
     import random
     
@@ -466,73 +449,54 @@ def templated_reply(
     nice_label = label.replace("_", " ")
 
     if user_confused:
-        opening = "💡 **No worries, let's walk through this step by step.**"
+        opening = "Let's work through this step by step."
     elif user_level == "novice":
-        opening = "📋 **Analysis Complete** — Let me explain what this incident is:"
+        opening = "Analysis result:"
     elif user_level == "expert":
-        opening = "🎯 **Incident Classification Result:**"
+        opening = "Classification:"
     else:
-        opening = "✅ **Assessment Complete** — Here's what I found:"
+        opening = "Assessment:"
 
     parts.append(opening)
 
-    # ---- 2) Classification + confidence (professional presentation) ----
+    # ---- 2) Classification + confidence ----
     nice_label_formatted = nice_label.title()
     
     if score >= 0.8:
-        conf_emoji = "🟢"
-        conf_text = "High Confidence"
-        conf_color = "#22c55e"
+        conf_text = "High confidence"
     elif score >= 0.6:
-        conf_emoji = "🟡"
-        conf_text = "Medium Confidence"
-        conf_color = "#eab308"
+        conf_text = "Medium confidence"
     else:
-        conf_emoji = "🔴"
-        conf_text = "Low Confidence"
-        conf_color = "#ef4444"
+        conf_text = "Low confidence"
 
-    parts.append(f"""---
-**🔍 Incident Type:** {nice_label_formatted}  
-**{conf_emoji} Confidence Level:** {conf_text} ({int(score*100)}% match)
----""")
+    parts.append(f"**Type:** {nice_label_formatted} ({conf_text}, {int(score*100)}%)")
 
-    # ---- 3) Why (lightly trimmed so it's not too long) ----
-    # hard cap on rationale length to avoid huge paragraphs
+    # ---- 3) Why ----
     max_len = 380
     clean_rationale = rationale.strip() if rationale else ""
     if len(clean_rationale) > max_len:
         clean_rationale = clean_rationale[:max_len].rsplit(" ", 1)[0] + "…"
 
     if clean_rationale:
-        parts.append(f"**🔎 Analysis Reasoning:**\n{clean_rationale}")
+        parts.append(f"**Why:** {clean_rationale}")
     else:
-        parts.append("**🔎 Analysis Reasoning:**\nBased on security patterns, keywords, and threat indicators detected in your description.")
+        parts.append("**Why:** Based on the patterns and keywords in your description.")
 
-    # ---- 4) Indicators (professional evidence display) ----
+    # ---- 4) Indicators ----
     sig_bits = []
     if iocs.get("ip"):
-        sig_bits.append(f"🌐 **{len(iocs['ip'])}** IP address(es)")
+        sig_bits.append(f"{len(iocs['ip'])} IP(s)")
     if iocs.get("url"):
-        sig_bits.append(f"🔗 **{len(iocs['url'])}** URL(s)")
+        sig_bits.append(f"{len(iocs['url'])} URL(s)")
     if iocs.get("cve"):
-        sig_bits.append(f"🐛 **{len(iocs['cve'])}** CVE identifier(s)")
+        sig_bits.append(f"{len(iocs['cve'])} CVE(s)")
 
     if sig_bits:
-        parts.append("**📊 Evidence Collected:** " + " • ".join(sig_bits))
-    # Don't show "none yet" - cleaner to omit
+        parts.append("**Found:** " + ", ".join(sig_bits))
 
     # ---- 5) Optional follow-up when needed ----
     if followup:
-        if user_level == "novice" or user_confused:
-            prefix = "💬 Can you tell me"
-        else:
-            prefix = "🔍 To confirm, I need"
-        parts.append(f"**{prefix}:** {followup}")
-
-    # Small reassurance for confused users
-    if user_confused:
-        parts.append("You're doing fine — just share whatever details you know, and I'll adjust the assessment.")
+        parts.append(f"**Need to know:** {followup}")
 
     return "\n\n".join(parts)
 
@@ -547,8 +511,8 @@ if user_text:
     with st.chat_message("user"): st.markdown(user_text)
 
     with st.chat_message("assistant"):
-        # Show user-friendly acknowledgment while processing
-        with st.spinner("📝 Understanding your incident..."):
+        # Show spinner while processing
+        with st.spinner("Processing..."):
             t0 = time.perf_counter()
             
             # Detect conversation type
@@ -744,52 +708,50 @@ if user_text:
             from src.dialogue_state import DialogueState
             
             if ctx.state == DialogueState.GATHERING_INFO or score < THRESH_LOW:
-                # First turn or LOW confidence: Ask for more information WITHOUT classification
+                # First turn: ask for more info
                 clarification_msgs = []
                 
-                # Show acknowledgment that we're listening
-                clarification_msgs.append("👂 **Got it, let me understand this better.**")
+                # Simple acknowledgment
+                clarification_msgs.append("Understood. Need additional details to classify this.")
                 
                 if user_confused:
-                    clarification_msgs.append("No worries, let's walk through this step by step.")
+                    clarification_msgs.append("Let's break it down.")
                 elif user_level == "novice":
-                    clarification_msgs.append("I need a bit more information to understand what's happening.")
+                    clarification_msgs.append("Please provide more information about what happened.")
                 elif user_level == "expert":
-                    clarification_msgs.append("I need additional technical details to classify this accurately.")
+                    clarification_msgs.append("Need technical details for accurate classification.")
                 else:
-                    clarification_msgs.append("I need more context to properly assess this incident.")
+                    clarification_msgs.append("More context needed.")
                 
                 if followup_for_reply:
-                    clarification_msgs.append(f"**Can you tell me:** {followup_for_reply}")
+                    clarification_msgs.append(f"**Question:** {followup_for_reply}")
                 else:
-                    # Generic clarification request
+                    # Generic request
                     if label == "other":
-                        clarification_msgs.append("**Can you tell me:** What type of security issue is this? (e.g., attack, malware, vulnerability, breach, suspicious activity)")
+                        clarification_msgs.append("**Question:** What kind of security issue is this?")
                     else:
-                        clarification_msgs.append("**Can you tell me:** Which system or application was affected, and what exactly happened?")
+                        clarification_msgs.append("**Question:** Which system was affected and what happened?")
                 
-                # Show any technical clues we found
+                # Show technical clues if found
                 sig_bits = []
-                if iocs.get("ip"): sig_bits.append("🌐 IP address mentioned")
-                if iocs.get("url"): sig_bits.append("🔗 URL mentioned")
-                if iocs.get("cve"): sig_bits.append("🐛 CVE identifier mentioned")
+                if iocs.get("ip"): sig_bits.append("IP found")
+                if iocs.get("url"): sig_bits.append("URL found")
+                if iocs.get("cve"): sig_bits.append("CVE found")
                 if sig_bits:
-                    clarification_msgs.append("**Technical clues I see so far:** " + ", ".join(sig_bits))
+                    clarification_msgs.append("(" + ", ".join(sig_bits) + ")")
                 
                 msg = "\n\n".join(clarification_msgs)
                 
             elif ctx.state == DialogueState.INCIDENT_SUSPECTED:
-                # Second turn: Show tentative classification with professional tone
-                msg = f"""✅ **Thank you for the additional details.**
+                # Second turn: tentative classification
+                msg = f"""Based on the information provided:
 
-**Preliminary Assessment**
+**Likely classification:** {label.replace('_', ' ').title()} (preliminary)
 
-This appears to be: **{label.replace('_', ' ').title()}** 🟡
-
-{rationale}
+**Reasoning:** {rationale}
 """
                 if followup_for_reply:
-                    msg += f"\n\n**❓ To confirm, please tell me:** {followup_for_reply}"
+                    msg += f"\n\n**Additional information needed:** {followup_for_reply}"
                 
             else:
                 # INCIDENT_CONFIRMED or READY_FOR_PHASE2: Full classification response
@@ -832,78 +794,45 @@ This appears to be: **{label.replace('_', ' ').title()}** 🟡
 if st.session_state.get("phase1_output"):
     p1 = st.session_state.phase1_output
     
-    # ---------------- INCIDENT SUMMARY CARD (Professional Design) ----------------
+    # ---------------- SUMMARY CARD ----------------
     st.markdown("---")
+    st.subheader("Current Assessment")
     
-    # Professional assessment card with gradient header
     nice_label = p1['incident_type'].replace('_', ' ').title()
     conf_pct = int(p1['confidence'] * 100)
     
-    if conf_pct >= 70:
-        conf_emoji = "🟢"
-        conf_text = "High Confidence"
-        conf_color = "#22c55e"
-        bg_color = "#f0fdf4"
-    elif conf_pct >= 60:
-        conf_emoji = "🟡"
-        conf_text = "Medium Confidence"
-        conf_color = "#eab308"
-        bg_color = "#fefce8"
-    else:
-        conf_emoji = "🔴"
-        conf_text = "Low Confidence"
-        conf_color = "#ef4444"
-        bg_color = "#fef2f2"
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.write(f"**Type:** {nice_label}")
+    with col2:
+        if conf_pct >= 70:
+            st.write(f"**Confidence:** High ({conf_pct}%)")
+        elif conf_pct >= 60:
+            st.write(f"**Confidence:** Medium ({conf_pct}%)")
+        else:
+            st.write(f"**Confidence:** Low ({conf_pct}%)")
     
-    st.markdown(f"""
-<div style='background: {bg_color}; padding: 1.5rem; border-radius: 10px; border-left: 6px solid {conf_color}; margin-bottom: 1rem;'>
-    <h3 style='margin: 0 0 1rem 0; color: #1e293b; font-size: 1.3rem;'>📌 Current Incident Assessment</h3>
-    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'>
-        <div>
-            <p style='margin: 0; color: #64748b; font-size: 0.9rem;'>INCIDENT TYPE</p>
-            <p style='margin: 0.25rem 0 0 0; color: #1e293b; font-size: 1.2rem; font-weight: bold;'>{nice_label}</p>
-        </div>
-        <div>
-            <p style='margin: 0; color: #64748b; font-size: 0.9rem;'>CONFIDENCE LEVEL</p>
-            <p style='margin: 0.25rem 0 0 0; color: {conf_color}; font-size: 1.2rem; font-weight: bold;'>{conf_emoji} {conf_text} ({conf_pct}%)</p>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-    
-    # Indicators with better visual design
+    # Indicators
     indicators = []
     if p1['iocs'].get("ip"):
-        indicators.append(f"🌐 **{len(p1['iocs']['ip'])}** IP(s)")
+        indicators.append(f"{len(p1['iocs']['ip'])} IP(s)")
     if p1['iocs'].get("url"):
-        indicators.append(f"🔗 **{len(p1['iocs']['url'])}** URL(s)")
+        indicators.append(f"{len(p1['iocs']['url'])} URL(s)")
     if p1.get('related_CVEs'):
-        indicators.append(f"🐛 **{len(p1['related_CVEs'])}** CVE(s)")
+        indicators.append(f"{len(p1['related_CVEs'])} CVE(s)")
     
     if indicators:
-        st.markdown(f"""
-<div style='padding: 0.8rem; background: white; border-radius: 6px; border: 1px solid #e2e8f0;'>
-    <strong style='color: #475569;'>📊 Threat Indicators:</strong> {' • '.join(indicators)}
-</div>
-""", unsafe_allow_html=True)
+        st.write("**Indicators:** " + ", ".join(indicators))
     
-    # ---------------- PHASE-2 BUTTON (only when ready) ----------------
+    # ---------------- PHASE-2 BUTTON ----------------
     ctx = st.session_state.dialogue_ctx
     
-    # Use dialogue state to determine Phase-2 readiness
     if ctx.is_ready_for_phase2(thresh=THRESH_GO):
         st.markdown("---")
+        st.subheader("Automated Response")
         
-        # Professional Phase-2 header
-        st.markdown("""
-<div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); padding: 1.2rem; border-radius: 8px; margin-bottom: 1rem;'>
-    <h3 style='color: white; margin: 0; font-size: 1.3rem;'>🚀 Automated Response Plan Ready</h3>
-    <p style='color: #d1fae5; margin: 0.5rem 0 0 0; font-size: 0.95rem;'>Incident classified with high confidence. Execute automated playbook for immediate response.</p>
-</div>
-""", unsafe_allow_html=True)
-        
-        if st.button("▶ Generate Response Plan", type="primary", key="phase2_trigger"):
-            with st.spinner("Generating automated response plan..."):
+        if st.button("Generate Response Plan", type="primary", key="phase2_trigger"):
+            with st.spinner("Generating response plan..."):
                 try:
                     phase2_result = run_phase2_from_incident(p1, dry_run=True)
                     
