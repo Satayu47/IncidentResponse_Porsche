@@ -393,20 +393,16 @@ REPORT_CATEGORY_MAP = {
     "other": "Other"
 }
 
-st.set_page_config(page_title="IR ChatOps — Phase 1", layout="wide")
-st.title("Incident Response ChatOps — Phase 1")
-
-# Show current system status
-provider = os.getenv("LLM_PROVIDER", "openai")
-api_status = "✓" if os.getenv("GOOGLE_API_KEY" if provider == "gemini" else "OPENAI_API_KEY") else "✗"
-st.caption(f"Input → IOCs/Entities → NVD context → Classification → Phase-2 Ready JSON ({api_status} online)")
+st.set_page_config(page_title="Incident Response Assistant", layout="wide", page_icon="🛡️")
+st.title("🛡️ Security Incident Response Assistant")
+st.caption("Powered by AI • OWASP Top 10:2025 Classification • Automated Response Playbooks")
 
 if "history" not in st.session_state:
     greetings = [
-        "Hey there. What's the security situation you're dealing with?",
-        "Hi. Tell me about the incident you need help with.",
-        "What's going on? Describe the security issue you've encountered.",
-        "Hey. What kind of security incident are we looking at?"
+        "👋 Hello! I'm here to help you analyze security incidents. What's happening?",
+        "Hi there! Describe the security issue you're dealing with, and I'll help classify it.",
+        "Welcome! Tell me about the incident you've encountered.",
+        "Hello! What security concern brings you here today?"
     ]
     import random
     
@@ -455,15 +451,20 @@ def templated_reply(
 
     parts.append(opening)
 
-    # ---- 2) Classification + confidence (1 sentence) ----
+    # ---- 2) Classification + confidence (cleaner presentation) ----
+    nice_label_formatted = nice_label.title()
+    
     if score >= 0.8:
-        conf = "I'm quite confident"
+        conf_emoji = "🟢"
+        conf_text = "High confidence"
     elif score >= 0.6:
-        conf = "I'm somewhat confident"
+        conf_emoji = "🟡"
+        conf_text = "Medium confidence"
     else:
-        conf = "I'm not very confident yet"
+        conf_emoji = "🔴"
+        conf_text = "Low confidence"
 
-    parts.append(f"**Most likely type:** {nice_label} ({conf}, score {score:.2f}).")
+    parts.append(f"**Identified as:** {nice_label_formatted} {conf_emoji} *({conf_text})*")
 
     # ---- 3) Why (lightly trimmed so it's not too long) ----
     # hard cap on rationale length to avoid huge paragraphs
@@ -477,27 +478,26 @@ def templated_reply(
     else:
         parts.append("**Why I think this:** based on patterns and keywords in what you described.")
 
-    # ---- 4) Indicators (short & simple) ----
+    # ---- 4) Indicators (cleaner icons) ----
     sig_bits = []
     if iocs.get("ip"):
-        sig_bits.append("IP address mentioned")
+        sig_bits.append("🌐 IP addresses")
     if iocs.get("url"):
-        sig_bits.append("URL mentioned")
+        sig_bits.append("🔗 URLs")
     if iocs.get("cve"):
-        sig_bits.append("CVE identifier mentioned")
+        sig_bits.append("🐛 CVE identifiers")
 
     if sig_bits:
-        parts.append("**Technical clues I see:** " + ", ".join(sig_bits))
-    else:
-        parts.append("**Technical clues I see:** none yet.")
+        parts.append("**Evidence found:** " + ", ".join(sig_bits))
+    # Don't show "none yet" - cleaner to omit
 
     # ---- 5) Optional follow-up when needed ----
     if followup:
         if user_level == "novice" or user_confused:
-            prefix = "To help me be more accurate, can you tell me:"
+            prefix = "💬 Can you tell me"
         else:
-            prefix = "To refine this further, I need:"
-        parts.append(f"**{prefix}** {followup}")
+            prefix = "🔍 To confirm, I need"
+        parts.append(f"**{prefix}:** {followup}")
 
     # Small reassurance for confused users
     if user_confused:
@@ -561,7 +561,7 @@ if user_text:
                     }
                     
                     # Use new Gemini-powered classification
-                    st.write("🔍 Analyzing with Gemini AI...")
+                    st.write("🔍 Analyzing...")
                     # Pass multi-turn context into LLM
                     extra_ctx = {
                         "kb_context": kb_context,
@@ -589,7 +589,7 @@ if user_text:
                         "candidates": gemini_result.get("candidates", [])
                     }
                     st.session_state.last_input_cache[cache_key] = out
-                    st.success("✅ Gemini AI analysis complete!")
+                    st.success("✅ Analysis complete")
                     
                 except RuntimeError as e:
                     st.error(f"🚨 API Error: {str(e)}")
@@ -741,11 +741,21 @@ if st.session_state.get("phase1_output"):
     
     # ---------------- INCIDENT SUMMARY CARD ----------------
     st.markdown("---")
-    st.subheader("📌 Incident Summary")
+    st.subheader("📌 Current Assessment")
     
-    st.markdown(f"- **Type:** {p1['incident_type']}")
-    st.markdown(f"- **Label:** `{p1['fine_label']}`")
-    st.markdown(f"- **Confidence:** {p1['confidence']:.2f}")
+    # Display in a cleaner format
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        nice_label = p1['incident_type'].replace('_', ' ').title()
+        st.markdown(f"**Incident Type:** {nice_label}")
+    with col2:
+        conf_pct = int(p1['confidence'] * 100)
+        if conf_pct >= 70:
+            st.markdown(f"**Confidence:** 🟢 High ({conf_pct}%)")
+        elif conf_pct >= 60:
+            st.markdown(f"**Confidence:** 🟡 Medium ({conf_pct}%)")
+        else:
+            st.markdown(f"**Confidence:** 🔴 Low ({conf_pct}%)")
     
     # Indicators
     indicators = []
@@ -766,16 +776,19 @@ if st.session_state.get("phase1_output"):
     
     if ready_for_phase2:
         st.markdown("---")
-        st.subheader("🚀 Phase-2 Automation")
+        st.subheader("🚀 Automated Response Plan")
         
         if st.button("▶ Generate Response Plan", type="primary", key="phase2_trigger"):
-            with st.spinner("Running Phase-2 engine..."):
+            with st.spinner("Generating automated response plan..."):
                 try:
                     phase2_result = run_phase2_from_incident(p1, dry_run=True)
                     
                     if phase2_result["status"] == "success":
-                        st.success("✅ Phase-2 playbook executed")
-                        st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
+                        st.success("✅ Response plan generated successfully")
+                        
+                        playbook_name = phase2_result.get('playbook', 'Unknown').replace('_', ' ').title()
+                        st.info(f"**Playbook:** {playbook_name}")
+                        st.caption(phase2_result.get('description', ''))
                         
                         # Group steps by phase
                         steps_by_phase = {}
@@ -785,27 +798,27 @@ if st.session_state.get("phase1_output"):
                                 steps_by_phase[phase] = []
                             steps_by_phase[phase].append(step)
                         
-                        # Phase order and friendly names
+                        # Phase order and friendly names with emojis
                         phase_names = {
-                            "preparation": "Preparation",
-                            "detection_analysis": "Detection & Analysis",
-                            "containment": "Containment",
-                            "eradication": "Eradication",
-                            "recovery": "Recovery",
-                            "post_incident": "Post-Incident"
+                            "preparation": "🛡️ Preparation",
+                            "detection_analysis": "🔍 Detection & Analysis",
+                            "containment": "⚠️ Containment",
+                            "eradication": "🧹 Eradication",
+                            "recovery": "♻️ Recovery",
+                            "post_incident": "📋 Post-Incident Review"
                         }
                         
                         # Display steps grouped by phase
                         for phase_key in ["preparation", "detection_analysis", "containment", "eradication", "recovery", "post_incident"]:
                             if phase_key in steps_by_phase:
                                 phase_steps = steps_by_phase[phase_key]
-                                st.markdown(f"#### {phase_names.get(phase_key, phase_key.title())}")
+                                st.markdown(f"### {phase_names.get(phase_key, phase_key.title())}")
                                 
                                 for step in phase_steps:
                                     with st.container():
                                         col_num, col_info = st.columns([1, 11])
                                         with col_num:
-                                            st.markdown(f"**{step['step']}**")
+                                            st.markdown(f"**Step {step['step']}**")
                                         with col_info:
                                             st.markdown(f"**{step['name']}**")
                                             if step.get('ui_description'):
@@ -814,15 +827,15 @@ if st.session_state.get("phase1_output"):
                                                 st.caption(step['message'])
                                 st.markdown("")
                     else:
-                        st.warning(f"Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
+                        st.warning(f"⚠️ Response plan could not be generated: {phase2_result.get('message', 'Unknown error')}")
                 
                 except Exception as e:
-                    st.error("❌ Phase-2 failed to run")
+                    st.error("❌ Failed to generate response plan")
                     st.exception(e)
     
     # ---------------- JSON EXPANDER (always show for audit) ----------------
     st.markdown("---")
-    with st.expander("🔧 Advanced Details (for audit & review)"):
+    with st.expander("⚙️ Technical Details (for audit & review)"):
         st.json(p1)
         
         if p1.get('related_CVEs'):
