@@ -400,12 +400,16 @@ Categories: SQL Injection, XSS, CSRF, Phishing, Denial of Service, Misconfigurat
 
 def classify_and_slots(user_text: str, entities: dict, context: dict) -> dict:
     """
-    Enhanced incident classification with OWASP hypotheses approach.
+    Enhanced incident classification with OWASP hypotheses approach and multi-turn support.
     
     Args:
         user_text: raw incident description from user
         entities: {"ip": [...], "url": [...], "cve": [...]} extracted IOCs
-        context: {"kb_context": "..."} optional knowledge base / NVD snippet
+        context: {
+            "kb_context": "...",                    # optional knowledge base / NVD snippet
+            "conversation_context": "...",          # previous messages for multi-turn reasoning
+            "user_confused": bool                   # flag for confused users
+        }
     
     Returns:
         {
@@ -421,7 +425,10 @@ def classify_and_slots(user_text: str, entities: dict, context: dict) -> dict:
         }
     """
     kb_context = context.get("kb_context", "")
-    prompt = _build_phase1_prompt(user_text, entities, kb_context)
+    conversation_context = context.get("conversation_context", "")
+    user_confused = context.get("user_confused", False)
+    
+    prompt = _build_phase1_prompt(user_text, entities, kb_context, conversation_context, user_confused)
     
     try:
         if PROVIDER == "gemini":
@@ -442,13 +449,33 @@ def classify_and_slots(user_text: str, entities: dict, context: dict) -> dict:
             "user_level": "novice"
         }
 
-def _build_phase1_prompt(user_text: str, entities: dict, kb_context: str) -> str:
+def _build_phase1_prompt(user_text: str, entities: dict, kb_context: str, conversation_context: str = "", user_confused: bool = False) -> str:
     """
-    Build comprehensive prompt for OWASP hypothesis classification.
+    Build comprehensive prompt for OWASP hypothesis classification with multi-turn context.
     """
-    prompt = f"""You are an expert cybersecurity incident responder. Analyze this security incident and provide a detailed assessment with actionable insights.
+    
+    # Build conversation awareness section
+    conversation_section = ""
+    if conversation_context:
+        conversation_section = f"""
+PREVIOUS CONVERSATION:
+{conversation_context}
 
-INCIDENT DESCRIPTION:
+IMPORTANT: Use the conversation history above to MAINTAIN YOUR CLASSIFICATION across turns unless NEW contradictory evidence appears.
+If the user is adding details about the SAME incident, REFINE your confidence but KEEP the same classification.
+Only CHANGE classification if the new message clearly describes a DIFFERENT type of incident.
+"""
+    
+    # Build confusion awareness section
+    confusion_section = ""
+    if user_confused:
+        confusion_section = """
+USER STATUS: This user seems confused or uncertain. Be patient and ask ONE simple, clear question at a time.
+"""
+    
+    prompt = f"""You are an expert cybersecurity incident responder. Analyze this security incident and provide a detailed assessment with actionable insights.
+{conversation_section}{confusion_section}
+CURRENT MESSAGE:
 {user_text}
 
 EXTRACTED INDICATORS:

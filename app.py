@@ -50,6 +50,38 @@ load_env_file()
 THRESH_LOW = float(os.getenv("THRESH_LOW", 0.6))  # ask one clarification
 THRESH_GO  = float(os.getenv("THRESH_GO", 0.7))   # ready to hand off
 
+
+def build_conversation_context(max_turns: int = 6) -> str:
+    """
+    Build a short conversation window (last N user/assistant messages).
+    This is passed into classify_and_slots so the LLM sees multi-turn context.
+    """
+    if "history" not in st.session_state:
+        return ""
+    turns = [m for m in st.session_state.history if m["role"] in ("user", "assistant")]
+    if not turns:
+        return ""
+    window = turns[-max_turns:]
+    return "\n".join(f"{m['role']}: {m['content']}" for m in window)
+
+
+def detect_user_confusion(text: str) -> bool:
+    """
+    Lightweight confusion detector for messy human chat:
+    detects 'i don't know', '??', 'what is that', etc.
+    """
+    t = text.lower()
+    patterns = [
+        "i dont know", "i don't know", "idk",
+        "dont know", "don't know",
+        "what is that", "what is this",
+        "what is endpoint", "what is an endpoint",
+        "อะไรคือ", "คืออะไร", "งง", "ไม่เข้าใจ",
+        "huh?", "???", "??", "wtf"
+    ]
+    return any(p in t for p in patterns)
+
+
 def answer_general_security_question(user_text: str) -> str | None:
     """
     Handle general security questions directly without running incident classification.
@@ -386,11 +418,6 @@ if "last_input_cache" not in st.session_state:
     st.session_state.last_input_cache = {}
 if "asked_slots" not in st.session_state:
     st.session_state.asked_slots = set()
-if "asked_slots" not in st.session_state:
-    st.session_state.asked_slots = set()
-if "last_input_cache" not in st.session_state:
-    st.session_state.last_input_cache = {}
-
 def templated_reply(
     user_text: str,
     label: str,
@@ -400,7 +427,8 @@ def templated_reply(
     kb_present: bool,
     followup: str | None,
     user_level: str = "intermediate",
-    candidates: list = None
+    candidates: list = None,
+    user_confused: bool = False
 ):
     """
     Generate balanced Phase-1 analysis response.
@@ -415,7 +443,9 @@ def templated_reply(
     # ---- 1) Short, user-level-friendly opening ----
     nice_label = label.replace("_", " ")
 
-    if user_level == "novice":
+    if user_confused:
+        opening = "No worries, let's walk through this step by step."
+    elif user_level == "novice":
         opening = "Let me explain what this probably is:"
     elif user_level == "expert":
         opening = "Here's the current assessment:"
@@ -462,11 +492,15 @@ def templated_reply(
 
     # ---- 5) Optional follow-up when needed ----
     if followup:
-        if user_level == "novice":
+        if user_level == "novice" or user_confused:
             prefix = "To help me be more accurate, can you tell me:"
         else:
             prefix = "To refine this further, I need:"
         parts.append(f"**{prefix}** {followup}")
+
+    # Small reassurance for confused users
+    if user_confused:
+        parts.append("You're doing fine — just share whatever details you know, and I'll adjust the assessment.")
 
     return "\n\n".join(parts)
 
@@ -491,6 +525,9 @@ if user_text:
                 st.session_state.history.append({"role":"assistant","content":general_answer})
                 st.stop()  # Don't proceed to incident classification
 
+            # Track if the user seems confused (for tone adaptation)
+            user_confused = detect_user_confusion(user_text)
+
             # 1) Extraction
             ents = extract_entities(user_text)
             iocs = extract_IOCs(user_text)
@@ -503,6 +540,9 @@ if user_text:
                 if ret:
                     # small k to reduce tokens
                     kb_context = format_retrieval_snippets(ret.get_relevant_documents(user_text))
+
+            # 2.5) Multi-turn conversation context (last few messages)
+            conversation_context = build_conversation_context(max_turns=6)
 
             # 3) Classification (LLM → JSON) with retry/backoff inside; graceful degradation if quota out
             rationale = ""
@@ -521,7 +561,13 @@ if user_text:
                     
                     # Use new Gemini-powered classification
                     st.write("🔍 Analyzing with Gemini AI...")
-                    gemini_result = classify_and_slots(user_text, entities_dict, {"kb_context": kb_context})
+                    # Pass multi-turn context into LLM
+                    extra_ctx = {
+                        "kb_context": kb_context,
+                        "conversation_context": conversation_context,
+                        "user_confused": user_confused,
+                    }
+                    gemini_result = classify_and_slots(user_text, entities_dict, extra_ctx)
                     
                     # Store full Gemini response in session
                     st.session_state.gemini_full_response = gemini_result
@@ -623,138 +669,128 @@ if user_text:
                 kb_present=bool(kb_context),
                 followup=followup if (followup and score < THRESH_GO) else None,
                 user_level=user_level,
-                candidates=candidates_list
+                candidates=candidates_list,
+                user_confused=user_confused
             )
             # This is the "chat" part that appears in the conversation history
             st.markdown(msg)
 
-            # ---------------- VISUAL SEPARATOR ----------------
-            st.markdown("---")
-
-            # Prepare Phase-1 handoff JSON and category mapping
-            report_category = REPORT_CATEGORY_MAP.get(label, "Other")
-            st.session_state.phase1_output = {
-                "incident_type": report_category,
-                "fine_label": label,
-                "confidence": score,
-                "rationale": rationale,
-                "entities": ents.__dict__,
-                "iocs": iocs,
-                "related_CVEs": ents.cves,
-                "kb_excerpt": kb_context[:600],
-                "timestamp_ms": round((time.perf_counter() - t0) * 1000, 1),
-            }
-
-            # ---------------- INCIDENT SUMMARY CARD (Phase-1) ----------------
-            st.markdown("---")
-            st.subheader("Incident Summary")
-
-            st.markdown(f"- **Type:** {report_category}")
-            st.markdown(f"- **Label:** `{label}`")
-            st.markdown(f"- **Confidence:** {score:.2f}")
-
-            # Indicators (simple list)
-            indicators = []
-            if iocs.get("ip"):
-                indicators.append(f"IP detected ({len(iocs['ip'])})")
-            if iocs.get("url"):
-                indicators.append(f"URL detected ({len(iocs['url'])})")
-            if ents.cves:
-                indicators.append(f"CVE detected ({len(ents.cves)})")
-
-            if indicators:
-                st.markdown(f"- **Indicators:** {' · '.join(indicators)}")
-            else:
-                st.markdown("- **Indicators:** (none detected)")
-
-            # ---------------- PHASE-2 BUTTON ----------------
-            st.markdown("---")
-            st.subheader("Phase-2 Automation")
-
-            if st.button("Run Response Playbook (Phase-2)", type="primary", key="phase2_trigger"):
-                st.session_state.show_phase2 = True
-            
-            # Show Phase 2 results if button was clicked
-            if st.session_state.get("show_phase2", False):
-                with st.spinner("Loading response playbook..."):
-                    try:
-                        phase2_result = run_phase2_from_incident(
-                            st.session_state.phase1_output,
-                            dry_run=True
-                        )
-                        
-                        if phase2_result["status"] == "success":
-                            st.success("Phase-2 playbook executed")
-                            st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
-                            
-                            # Group steps by phase
-                            steps_by_phase = {}
-                            for step in phase2_result["steps"]:
-                                phase = step.get("phase", "unknown")
-                                if phase not in steps_by_phase:
-                                    steps_by_phase[phase] = []
-                                steps_by_phase[phase].append(step)
-                            
-                            # Phase order and friendly names
-                            phase_names = {
-                                "preparation": "Preparation",
-                                "detection_analysis": "Detection & Analysis",
-                                "containment": "Containment",
-                                "eradication": "Eradication",
-                                "recovery": "Recovery",
-                                "post_incident": "Post-Incident"
-                            }
-                            
-                            # Display steps grouped by phase
-                            for phase_key in ["preparation", "detection_analysis", "containment", "eradication", "recovery", "post_incident"]:
-                                if phase_key in steps_by_phase:
-                                    phase_steps = steps_by_phase[phase_key]
-                                    st.markdown(f"#### {phase_names.get(phase_key, phase_key.title())}")
-                                    
-                                    for step in phase_steps:
-                                        with st.container():
-                                            col_num, col_info = st.columns([1, 11])
-                                            with col_num:
-                                                st.markdown(f"**{step['step']}**")
-                                            with col_info:
-                                                st.markdown(f"**{step['name']}**")
-                                                if step.get('ui_description'):
-                                                    st.caption(step['ui_description'])
-                                                else:
-                                                    st.caption(step['message'])
-                                    st.markdown("")
-                            
-                            # Reset button
-                            if st.button("Close Response Plan"):
-                                st.session_state.show_phase2 = False
-                                st.rerun()
-                        else:
-                            st.warning(f"Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
-                            st.session_state.show_phase2 = False
-                    
-                    except Exception as e:
-                        st.error(f"Phase-2 execution failed: {str(e)}")
-                        st.session_state.show_phase2 = False
-
-            # ---------------- ADVANCED JSON ----------------
-            st.markdown("---")
-            with st.expander("JSON sent to Phase-2"):
-                st.json(st.session_state.phase1_output)
-                
-                if ents.cves:
-                    st.markdown("**CVE Links:**")
-                    for c in ents.cves[:5]:
-                        st.markdown(f"- [{c}]({mitre_url(c)})")
-
-                # Download button
-                buf = io.BytesIO(
-                    json.dumps(st.session_state.phase1_output, indent=2).encode("utf-8")
-                )
-                st.download_button(
-                    "Download JSON",
-                    data=buf,
-                    file_name="incident_report.json",
-                    mime="application/json",
-                )
-
     st.session_state.history.append({"role":"assistant","content":msg})
+
+    # Prepare Phase-1 handoff JSON and category mapping
+    report_category = REPORT_CATEGORY_MAP.get(label, "Other")
+    st.session_state.phase1_output = {
+        "incident_type": report_category,
+        "fine_label": label,
+        "confidence": score,
+        "rationale": rationale,
+        "entities": ents.__dict__,
+        "iocs": iocs,
+        "related_CVEs": ents.cves,
+        "kb_excerpt": kb_context[:600],
+        "timestamp_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+# ===============================
+# Always-visible Phase-1 summary + Phase-2
+# (Outside the 'if user_text:' block so it persists across reruns)
+# ===============================
+if st.session_state.get("phase1_output"):
+    p1 = st.session_state.phase1_output
+    
+    # ---------------- INCIDENT SUMMARY CARD ----------------
+    st.markdown("---")
+    st.subheader("📌 Incident Summary")
+    
+    st.markdown(f"- **Type:** {p1['incident_type']}")
+    st.markdown(f"- **Label:** `{p1['fine_label']}`")
+    st.markdown(f"- **Confidence:** {p1['confidence']:.2f}")
+    
+    # Indicators
+    indicators = []
+    if p1['iocs'].get("ip"):
+        indicators.append(f"IP detected ({len(p1['iocs']['ip'])})")
+    if p1['iocs'].get("url"):
+        indicators.append(f"URL detected ({len(p1['iocs']['url'])})")
+    if p1.get('related_CVEs'):
+        indicators.append(f"CVE detected ({len(p1['related_CVEs'])})")
+    
+    if indicators:
+        st.markdown(f"- **Indicators:** {' · '.join(indicators)}")
+    else:
+        st.markdown("- **Indicators:** (none detected)")
+    
+    # ---------------- PHASE-2 BUTTON ----------------
+    st.markdown("---")
+    st.subheader("🚀 Phase-2 Automation")
+    
+    if st.button("▶ Run Response Playbook (Phase-2)", type="primary", key="phase2_trigger"):
+        with st.spinner("Running Phase-2 engine..."):
+            try:
+                phase2_result = run_phase2_from_incident(p1, dry_run=True)
+                
+                if phase2_result["status"] == "success":
+                    st.success("✅ Phase-2 playbook executed")
+                    st.info(f"**Playbook:** {phase2_result.get('playbook', 'Unknown')} - {phase2_result.get('description', '')}")
+                    
+                    # Group steps by phase
+                    steps_by_phase = {}
+                    for step in phase2_result["steps"]:
+                        phase = step.get("phase", "unknown")
+                        if phase not in steps_by_phase:
+                            steps_by_phase[phase] = []
+                        steps_by_phase[phase].append(step)
+                    
+                    # Phase order and friendly names
+                    phase_names = {
+                        "preparation": "Preparation",
+                        "detection_analysis": "Detection & Analysis",
+                        "containment": "Containment",
+                        "eradication": "Eradication",
+                        "recovery": "Recovery",
+                        "post_incident": "Post-Incident"
+                    }
+                    
+                    # Display steps grouped by phase
+                    for phase_key in ["preparation", "detection_analysis", "containment", "eradication", "recovery", "post_incident"]:
+                        if phase_key in steps_by_phase:
+                            phase_steps = steps_by_phase[phase_key]
+                            st.markdown(f"#### {phase_names.get(phase_key, phase_key.title())}")
+                            
+                            for step in phase_steps:
+                                with st.container():
+                                    col_num, col_info = st.columns([1, 11])
+                                    with col_num:
+                                        st.markdown(f"**{step['step']}**")
+                                    with col_info:
+                                        st.markdown(f"**{step['name']}**")
+                                        if step.get('ui_description'):
+                                            st.caption(step['ui_description'])
+                                        else:
+                                            st.caption(step['message'])
+                            st.markdown("")
+                else:
+                    st.warning(f"Phase-2 could not execute: {phase2_result.get('message', 'Unknown error')}")
+            
+            except Exception as e:
+                st.error("❌ Phase-2 failed to run")
+                st.exception(e)
+    
+    # ---------------- JSON EXPANDER ----------------
+    st.markdown("---")
+    with st.expander("🔧 JSON sent to Phase-2"):
+        st.json(p1)
+        
+        if p1.get('related_CVEs'):
+            st.markdown("**CVE Links:**")
+            for c in p1['related_CVEs'][:5]:
+                st.markdown(f"- [{c}]({mitre_url(c)})")
+        
+        # Download button
+        buf = io.BytesIO(json.dumps(p1, indent=2).encode("utf-8"))
+        st.download_button(
+            "Download JSON",
+            data=buf,
+            file_name="incident_report.json",
+            mime="application/json",
+        )
