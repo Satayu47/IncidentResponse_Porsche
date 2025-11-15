@@ -464,6 +464,14 @@ PREVIOUS CONVERSATION:
 IMPORTANT: Use the conversation history above to MAINTAIN YOUR CLASSIFICATION across turns unless NEW contradictory evidence appears.
 If the user is adding details about the SAME incident, REFINE your confidence but KEEP the same classification.
 Only CHANGE classification if the new message clearly describes a DIFFERENT type of incident.
+
+CRITICAL: If the user explicitly says "this is [attack type]" or "it's [attack type]", RESPECT their statement and classify accordingly.
+Examples of explicit statements you MUST respect:
+- "this is sql injection" → classify as injection
+- "i already said it's brute force" → classify as broken_authentication  
+- "yes it's xss" → classify as injection
+- "definitely misconfiguration" → classify as security_misconfiguration
+DO NOT ignore or contradict explicit user statements about attack types.
 """
     
     # Build confusion awareness section
@@ -507,12 +515,20 @@ OWASP CATEGORIES:
 - other: Unclear/insufficient information
 
 CLASSIFICATION RULES:
-• "missing table" without attack indicators → PRIMARY: security_misconfiguration, SECONDARY: injection (0.3-0.4 score)
-• "can't login" without brute force evidence → PRIMARY: broken_authentication, SECONDARY: injection if suspicious activity
-• Only use "injection" as PRIMARY for clear payloads: SQL syntax, script tags, command injection
-• ALWAYS include injection as secondary candidate when operational issues could have malicious causes
-• Be specific about WHY you chose each classification AND why alternatives are possible
-• When multiple causes possible, acknowledge uncertainty and provide branching questions
+• For VAGUE symptoms like "table missing", "can't login", "error", "problem":
+  - If confidence would be < 0.7, classify as "other" with LOW confidence (0.3-0.5)
+  - List ALL possible causes in candidates (misconfiguration, injection, access control, human error, malware)
+  - DO NOT pick one classification without evidence
+  - Ask specific questions to determine root cause
+  
+• Only classify with confidence > 0.6 when you have EVIDENCE:
+  - injection: Clear malicious payloads (OR 1=1, <script>, UNION SELECT, command injection syntax)
+  - broken_authentication: Multiple failed logins, session hijacking, credential stuffing
+  - broken_access_control: User accessing unauthorized resources, IDOR with proof
+  - security_misconfiguration: Configuration files shown, deployment errors, wrong permissions
+  
+• ALWAYS acknowledge multiple possibilities for ambiguous symptoms
+• Ask questions that distinguish between: attack vs. human error vs. system failure vs. configuration issue
 
 USER LEVEL DETECTION:
 • novice: Simple language, basic descriptions
@@ -529,10 +545,11 @@ Provide ONLY valid JSON with this schema:
         {{"label": "alternative_category", "score": 0.XX}}
     ],
     "missing_slots": ["specific", "information", "needed"],
-    "user_level": "novice|intermediate|expert"
+    "user_level": "novice|intermediate|expert",
     "next_questions": [
-        "Specific question to gather missing info",
-        "Another targeted question"
+        "For VAGUE symptoms (table missing, error, problem): Ask to distinguish between attack/human error/system failure",
+        "Did you or your team intentionally modify this? Any suspicious activity in logs? When did this happen - during deployment/update?",
+        "For ATTACK scenarios: Which IP/user was involved? What endpoint was affected? Do you have logs?"
     ],
     "immediate_actions": [
         "What they should do right now",
