@@ -30,6 +30,9 @@ from src.nvd import fetch_cve, mitre_url
 from src.lc_retriever import build_inmemory_kb, format_retrieval_snippets
 from src.explicit_detector import force_classification_if_explicit, detect_explicit_attack
 from src.dialogue_state import DialogueContext, DialogueState, update_context
+from src.owasp_display import get_owasp_display_name, get_short_display_name
+from src.owasp_display import get_owasp_display_name, get_short_display_name
+from src.owasp_display import get_owasp_display_name, get_short_display_name
 
 # ✅ Phase 2 integration - FROM FRIEND'S IR-SANDBOX REPO (NOW FULLY CONNECTED)
 from phase2_engine.core.runner import run_phase2_from_incident
@@ -446,7 +449,9 @@ def templated_reply(
     parts = []
 
     # ---- 1) Short, user-level-friendly opening ----
-    nice_label = label.replace("_", " ")
+    # Use OWASP official display name with specific detection type
+    # Shows both: "Broken Authentication (OWASP A07:2025 - Authentication Failures)"
+    owasp_display = get_owasp_display_name(label, show_specific=True)
 
     if user_confused:
         opening = "Let's work through this step by step."
@@ -460,7 +465,7 @@ def templated_reply(
     parts.append(opening)
 
     # ---- 2) Classification + confidence ----
-    nice_label_formatted = nice_label.title()
+    nice_label_formatted = owasp_display
     
     if score >= 0.8:
         conf_text = "High confidence"
@@ -798,12 +803,13 @@ if st.session_state.get("phase1_output"):
     st.markdown("---")
     st.subheader("Current Assessment")
     
-    nice_label = p1['incident_type'].replace('_', ' ').title()
+    # Use OWASP official display name with specific type (most accurate)
+    owasp_display = get_owasp_display_name(p1['incident_type'], show_specific=True)
     conf_pct = int(p1['confidence'] * 100)
     
     col1, col2 = st.columns([2, 1])
     with col1:
-        st.write(f"**Type:** {nice_label}")
+        st.write(f"**Type:** {owasp_display}")
     with col2:
         if conf_pct >= 70:
             st.write(f"**Confidence:** High ({conf_pct}%)")
@@ -839,7 +845,8 @@ if st.session_state.get("phase1_output"):
                     if phase2_result["status"] == "success":
                         st.success("✅ Response plan generated successfully")
                         
-                        playbook_name = phase2_result.get('playbook', 'Unknown').replace('_', ' ').title()
+                        # Playbook name is already formatted from YAML (e.g., "A07:2025 Authentication Failures")
+                        playbook_name = phase2_result.get('playbook', 'Unknown')
                         st.info(f"**Playbook:** {playbook_name}")
                         st.caption(phase2_result.get('description', ''))
                         

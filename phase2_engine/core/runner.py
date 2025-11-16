@@ -111,7 +111,7 @@ class Phase2Runner:
             }
         
         # Extract playbook info
-        playbook_name = playbook.get("name", "Unknown")
+        playbook_name = playbook.get("category", playbook.get("name", "Unknown"))
         description = playbook.get("description", "")
         nodes = playbook.get("nodes", [])  # YAML uses "nodes" not "steps"
         
